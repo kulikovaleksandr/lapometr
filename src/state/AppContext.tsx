@@ -49,6 +49,7 @@ interface Ctx {
   toggleNotif: () => void;
   exportData: () => void;
   resetAll: () => void;
+  replaceDb: (next: DB) => void;
 }
 
 const AppCtx = createContext<Ctx | null>(null);
@@ -308,11 +309,25 @@ export function AppProvider({ children }: { children: ReactNode }) {
     location.reload();
   };
 
+  /** Полная замена БД (загрузка снапшота из облака) */
+  const replaceDb = (next: DB) => {
+    lastSaved.current = JSON.stringify(next);
+    saveDB(next);
+    setDb(next);
+    if (userId && !next.users.some((u) => u.id === userId)) {
+      saveSession(null);
+      setUserId(null);
+      toast("В снапшоте другие аккаунты — войдите заново", "warn");
+    } else {
+      toast("Данные из облака загружены", "ok");
+    }
+  };
+
   const value: Ctx = {
     db, user, pet, acts, logs, owners, theme, toasts, now, notifOn,
     register, login, loginDemo, guest, logout, updateProfile, createPet, complete,
     addAct, updateAct, deleteAct, regenInvite, joinPet, removeOwner,
-    setTheme, toast, dismissToast, toggleNotif, exportData, resetAll,
+    setTheme, toast, dismissToast, toggleNotif, exportData, resetAll, replaceDb,
   };
 
   return <AppCtx.Provider value={value}>{children}</AppCtx.Provider>;

@@ -6,7 +6,7 @@ export type IconName =
   | "bell" | "trophy" | "flame" | "chart" | "users" | "gear" | "out" | "plus"
   | "check" | "x" | "copy" | "crown" | "moon" | "sun" | "book" | "home"
   | "camera" | "edit" | "trash" | "clock" | "info" | "spark" | "chev"
-  | "download" | "alert" | "dot";
+  | "download" | "upload" | "cloud" | "alert" | "dot";
 
 export interface User {
   id: string;

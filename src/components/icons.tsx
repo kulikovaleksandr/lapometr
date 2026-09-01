@@ -170,6 +170,8 @@ const P: Record<IconName, ReactNode> = {
   spark: <path d="m12 3 1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8L12 3z" />,
   chev: <path d="m9 6 6 6-6 6" />,
   download: <path d="M12 3v12M7.5 10.5 12 15l4.5-4.5M4.5 20h15" />,
+  upload: <path d="M12 15V3M7.5 7.5 12 3l4.5 4.5M4.5 20h15" />,
+  cloud: <path d="M7 18.5h10a4 4 0 0 0 .8-7.92 5.5 5.5 0 0 0-10.7-1.16A4.6 4.6 0 0 0 7 18.5z" />,
   alert: <path d="M12 4 2.8 19.5h18.4L12 4zM12 10v4M12 17h.01" />,
   dot: <circle cx="12" cy="12" r="4.5" fill="currentColor" stroke="none" />,
 };

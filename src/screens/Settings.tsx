@@ -1,5 +1,11 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useApp } from "../state/AppContext";
+import {
+  clearCloudConfig, cloudCurrentUser, cloudPull, cloudPush, cloudSignIn,
+  cloudSignInGoogle, cloudSignOut, cloudSignUp, lastSyncAt, loadCloudConfig,
+  onCloudAuthChange, saveCloudConfig, testConnection,
+  type CloudSnapshot, type CloudUser,
+} from "../lib/cloud";
 import { Btn, Field, Modal, Reveal, UserAvatar, cx, inputCls } from "../components/ui";
 import { Icon } from "../components/icons";
 import { ACT_COLORS, ACT_ICONS, AVATAR_COLORS } from "../lib/data";
@@ -180,6 +186,11 @@ export function SettingsScreen({ onCopy }: { onCopy: (code: string) => void }) {
             </p>
           </section>
         </Reveal>
+
+        {/* ---- Облако и синхронизация ---- */}
+        <div className="lg:col-span-2">
+          <CloudPanel />
+        </div>
       </div>
 
       {/* ---- Активности ---- */}
@@ -364,5 +375,259 @@ function ActEditor({ def, onClose, onSave }: {
         </div>
       </div>
     </Modal>
+  );
+}
+
+/* ================= Облако и синхронизация ================= */
+
+function GoogleG() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 48 48" aria-hidden>
+      <path fill="#EA4335" d="M24 9.5c3.54 0 6.7 1.22 9.2 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.5 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z" />
+      <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z" />
+      <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z" />
+      <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z" />
+    </svg>
+  );
+}
+
+function CloudPanel() {
+  const { db, replaceDb, toast, user } = useApp();
+  const [cfg, setCfg] = useState(() => loadCloudConfig());
+  const [cloudUser, setCloudUser] = useState<CloudUser | null>(null);
+  const [url, setUrl] = useState(cfg?.url ?? "");
+  const [key, setKey] = useState(cfg?.anonKey ?? "");
+  const [busy, setBusy] = useState<string | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  const [mode, setMode] = useState<"in" | "up">("in");
+  const [email, setEmail] = useState("");
+  const [pass, setPass] = useState("");
+  const [lastSync, setLastSync] = useState<number | null>(() => lastSyncAt());
+  const [pullAsk, setPullAsk] = useState<CloudSnapshot | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    if (loadCloudConfig()) cloudCurrentUser().then((u) => { if (alive) setCloudUser(u); });
+    const un = onCloudAuthChange((u) => { if (alive) setCloudUser(u); });
+    return () => { alive = false; un(); };
+  }, [cfg]);
+
+  const connect = async () => {
+    setBusy("connect"); setErr(null);
+    const r = await testConnection(url, key);
+    setBusy(null);
+    if (!r.ok) { setErr(r.error); return; }
+    saveCloudConfig(url, key);
+    setCfg(loadCloudConfig());
+    toast("Облако подключено — войдите в аккаунт", "ok");
+  };
+
+  const disconnect = async () => {
+    await cloudSignOut();
+    clearCloudConfig();
+    setCfg(null); setCloudUser(null); setUrl(""); setKey(""); setLastSync(null);
+    toast("Облако отключено, данные остались на устройстве", "warn");
+  };
+
+  const auth = async () => {
+    if (!email.trim() || !pass) { setErr("Введите e-mail и пароль"); return; }
+    setBusy("auth"); setErr(null);
+    const r = mode === "in" ? await cloudSignIn(email, pass) : await cloudSignUp(email, pass, user?.name ?? "");
+    setBusy(null);
+    if (!r.ok) { setErr(r.error); return; }
+    if (r.note) { toast(r.note, "warn"); return; }
+    const u = await cloudCurrentUser();
+    setCloudUser(u);
+    if (u) toast(`Облачный вход: ${u.email ?? "ок"}`, "ok");
+  };
+
+  const google = async () => {
+    setBusy("google"); setErr(null);
+    const r = await cloudSignInGoogle();
+    setBusy(null);
+    if (!r.ok) setErr(r.error);
+  };
+
+  const doPush = async () => {
+    setBusy("push"); setErr(null);
+    const r = await cloudPush(db);
+    setBusy(null);
+    if (!r.ok) { setErr(r.error); return; }
+    setLastSync(r.data?.at ?? Date.now());
+    toast("Отправлено в облако", "ok");
+  };
+
+  const doPull = async () => {
+    setBusy("pull"); setErr(null);
+    const r = await cloudPull();
+    setBusy(null);
+    if (!r.ok) { setErr(r.error); return; }
+    const snap = r.data ?? null;
+    if (!snap) { toast("В облаке пока пусто — сначала отправьте данные", "warn"); return; }
+    if (JSON.stringify(snap.data) === JSON.stringify(db)) { toast("Всё актуально", "ok"); return; }
+    setPullAsk(snap);
+  };
+
+  const status = !cfg
+    ? { cls: "bg-raise text-mute", dot: "bg-mute", label: "не подключено" }
+    : cloudUser
+      ? { cls: "bg-ok/15 text-ok", dot: "bg-ok", label: `в сети · ${cloudUser.email}` }
+      : { cls: "bg-warn/15 text-warn", dot: "bg-warn", label: "подключено · нет входа" };
+
+  const fmt = (t: number) =>
+    new Date(t).toLocaleString("ru-RU", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+
+  return (
+    <Reveal>
+      <section className="card relative overflow-hidden p-6">
+        <div className="pointer-events-none absolute inset-0"
+          style={{ background: "radial-gradient(520px 260px at 100% 0%, var(--glow2), transparent 70%)" }} />
+
+        <div className="relative flex flex-wrap items-center justify-between gap-3">
+          <h3 className="flex items-center gap-2 font-display text-[16px] font-bold">
+            <Icon name="cloud" size={18} className="text-accent" />Облако и синхронизация
+          </h3>
+          <span className={cx("inline-flex items-center gap-2 rounded-full px-3 py-1 text-[12px] font-bold", status.cls)}>
+            <span className={cx("h-1.5 w-1.5 rounded-full", status.dot, cfg && "animate-[pulse-dot_2s_ease-in-out_infinite]")} />
+            {status.label}
+          </span>
+        </div>
+        <p className="relative mt-1.5 max-w-2xl text-[12.5px] leading-relaxed text-mute">
+          Локальный режим работает всегда. Подключите свой проект Supabase — и лапки, журнал и дуэль
+          будут жить на всех устройствах, а второй хозяин войдёт с телефона через Google или почту.
+        </p>
+
+        <div className="relative mt-5 grid gap-5 lg:grid-cols-2">
+          {/* левая колонка: подключение / аккаунт / синк */}
+          <div className="space-y-4">
+            {!cfg ? (
+              <div className="rounded-xl border border-line bg-bg2/50 p-4">
+                <Field label="Project URL" hint="Supabase → Settings → API">
+                  <input className={inputCls} value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://xxxx.supabase.co" spellCheck={false} />
+                </Field>
+                <div className="mt-3">
+                  <Field label="Anon key" hint="публичный ключ, не секретный service_role">
+                    <input className={inputCls} value={key} onChange={(e) => setKey(e.target.value)} placeholder="eyJhbGciOi…" spellCheck={false} />
+                  </Field>
+                </div>
+                <Btn className="mt-4 w-full" onClick={connect} disabled={busy === "connect" || !url.trim() || !key.trim()}>
+                  <Icon name={busy === "connect" ? "clock" : "cloud"} size={16} />
+                  {busy === "connect" ? "Проверяем…" : "Проверить и подключить"}
+                </Btn>
+              </div>
+            ) : (
+              <>
+                {!cloudUser ? (
+                  <div className="rounded-xl border border-line bg-bg2/50 p-4">
+                    <div className="mb-3 flex rounded-lg bg-raise p-1">
+                      {([["in", "Вход"], ["up", "Регистрация"]] as const).map(([m, l]) => (
+                        <button key={m} onClick={() => { setMode(m); setErr(null); }}
+                          className={cx("flex-1 rounded-md py-1.5 text-[12.5px] font-bold transition-all", mode === m ? "bg-surface shadow" : "text-mute hover:text-ink")}>
+                          {l}
+                        </button>
+                      ))}
+                    </div>
+                    <input className={inputCls} value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@mail.ru" type="email" />
+                    <input className={cx(inputCls, "mt-2")} value={pass} onChange={(e) => setPass(e.target.value)} placeholder="Пароль" type="password" />
+                    <Btn className="mt-3 w-full" onClick={auth} disabled={busy === "auth"}>
+                      {busy === "auth" ? "Секунду…" : mode === "in" ? "Войти в облако" : "Создать аккаунт"}
+                    </Btn>
+                    <button onClick={google} disabled={busy === "google"}
+                      className="mt-2.5 flex w-full items-center justify-center gap-2.5 rounded-xl border border-line bg-surface py-2.5 text-[13.5px] font-bold transition-all hover:-translate-y-0.5 hover:border-mute disabled:opacity-60">
+                      <GoogleG />Продолжить с Google
+                    </button>
+                  </div>
+                ) : (
+                  <div className="rounded-xl border border-line bg-bg2/50 p-4">
+                    <div className="flex items-center gap-3">
+                      <span className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-ok/15 text-ok">
+                        <Icon name="check" size={18} />
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-[13.5px] font-bold">{cloudUser.email}</p>
+                        <p className="text-[11.5px] font-semibold text-mute">
+                          вход через {cloudUser.provider === "google" ? "Google" : "e-mail"}
+                        </p>
+                      </div>
+                      <Btn variant="ghost" size="sm" onClick={async () => { await cloudSignOut(); setCloudUser(null); toast("Вышли из облака", "warn"); }}>
+                        Выйти
+                      </Btn>
+                    </div>
+                  </div>
+                )}
+
+                <div className="rounded-xl border border-line bg-bg2/50 p-4">
+                  <p className="text-[12px] font-bold uppercase tracking-wider text-mute">Синхронизация</p>
+                  <p className="mt-1 text-[12.5px] text-mute">
+                    {lastSync ? `Последний обмен: ${fmt(lastSync)}` : "Ещё не синхронизировали"}
+                  </p>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <Btn size="sm" onClick={doPush} disabled={busy === "push" || !cloudUser}>
+                      <Icon name={busy === "push" ? "clock" : "upload"} size={15} />
+                      {busy === "push" ? "Отправляем…" : "Отправить в облако"}
+                    </Btn>
+                    <Btn size="sm" variant="soft" onClick={doPull} disabled={busy === "pull" || !cloudUser}>
+                      <Icon name={busy === "pull" ? "clock" : "download"} size={15} />
+                      {busy === "pull" ? "Получаем…" : "Загрузить из облака"}
+                    </Btn>
+                  </div>
+                  <p className="mt-2.5 text-[11.5px] leading-relaxed text-mute">
+                    «Загрузить» предложит заменить локальные данные снапшотом — ничего не теряется без подтверждения.
+                  </p>
+                </div>
+
+                <Btn variant="ghost" size="sm" onClick={disconnect}>
+                  <Icon name="x" size={14} />Отключить облако
+                </Btn>
+              </>
+            )}
+
+            {err && <p className="anim-fade rounded-lg bg-danger/10 px-3 py-2 text-[12.5px] font-medium text-danger">{err}</p>}
+          </div>
+
+          {/* правая колонка: инструкция */}
+          <div className="rounded-xl border border-dashed border-line p-4">
+            <p className="text-[12px] font-bold uppercase tracking-wider text-mute">Настройка за 4 шага</p>
+            <ol className="mt-3 space-y-3">
+              {[
+                ["Создайте проект на supabase.com (бесплатный план подходит)", null],
+                ["SQL Editor → вставьте supabase/migrations/001_init.sql → Run", "таблицы, RLS, анти-чит лимиты и claim_invite()"],
+                ["Settings → API: скопируйте Project URL и anon key сюда", null],
+                ["Authentication → Providers: включите Email и Google для входа через Google", "нужны Client ID/Secret из Google Cloud Console"],
+              ].map(([s, sub], i) => (
+                <li key={i} className="flex items-start gap-3">
+                  <span className="mt-0.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-accent-soft font-display text-[12px] font-bold text-accent">{i + 1}</span>
+                  <span className="text-[12.5px] leading-relaxed text-mute">
+                    {s}{sub && <span className="block text-[11.5px] text-mute/75">{sub}</span>}
+                  </span>
+                </li>
+              ))}
+            </ol>
+            <p className="mt-4 border-t border-line pt-3 text-[11.5px] leading-relaxed text-mute">
+              Без настройки приложение остаётся полностью рабочим: данные живут на этом устройстве,
+              второй хозяин — через соседнюю вкладку.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      {/* подтверждение замены данных */}
+      <Modal open={!!pullAsk} onClose={() => setPullAsk(null)}>
+        <div className="p-6">
+          <h3 className="font-display text-[18px] font-extrabold">Заменить локальные данные?</h3>
+          <p className="mt-2 text-[13.5px] leading-relaxed text-mute">
+            В облаке снапшот от <b className="text-ink">{pullAsk ? fmt(pullAsk.updatedAt) : ""}</b>.
+            Текущий журнал на этом устройстве будет заменён облачным.
+            Перед этим можно нажать «Отправить в облако», чтобы сохранить локальную версию.
+          </p>
+          <div className="mt-5 flex justify-end gap-2.5">
+            <Btn variant="ghost" onClick={() => setPullAsk(null)}>Отмена</Btn>
+            <Btn variant="danger" onClick={() => { if (pullAsk) { replaceDb(pullAsk.data); setLastSync(pullAsk.updatedAt); } setPullAsk(null); }}>
+              <Icon name="download" size={15} />Заменить
+            </Btn>
+          </div>
+        </div>
+      </Modal>
+    </Reveal>
   );
 }
