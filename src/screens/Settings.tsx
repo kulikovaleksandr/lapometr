@@ -6,6 +6,7 @@ import {
   onCloudAuthChange, saveCloudConfig, testConnection,
   type CloudSnapshot, type CloudUser,
 } from "../lib/cloud";
+import { tgTestSend } from "../lib/telegram";
 import { Btn, Field, Modal, Reveal, UserAvatar, cx, inputCls } from "../components/ui";
 import { Icon } from "../components/icons";
 import { ACT_COLORS, ACT_ICONS, AVATAR_COLORS } from "../lib/data";
@@ -34,7 +35,7 @@ export function SettingsScreen({ onCopy }: { onCopy: (code: string) => void }) {
   const {
     user, pet, owners, acts, theme, setTheme, notifOn, toggleNotif,
     updateProfile, regenInvite, joinPet, removeOwner, addAct, updateAct, deleteAct,
-    exportData, resetAll, toast,
+    exportData, resetAll, toast, tg, setTg,
   } = useApp();
 
   const [name, setName] = useState(user?.name ?? "");
@@ -186,6 +187,9 @@ export function SettingsScreen({ onCopy }: { onCopy: (code: string) => void }) {
             </p>
           </section>
         </Reveal>
+
+        {/* ---- Telegram ---- */}
+        <TelegramCard />
 
         {/* ---- Облако и синхронизация ---- */}
         <div className="lg:col-span-2">
@@ -375,6 +379,117 @@ function ActEditor({ def, onClose, onSave }: {
         </div>
       </div>
     </Modal>
+  );
+}
+
+/* ================= Telegram-напоминания ================= */
+
+function TelegramCard() {
+  const { tg, setTg, toast } = useApp();
+  const [busy, setBusy] = useState(false);
+  const [res, setRes] = useState<{ ok: boolean; text: string } | null>(null);
+
+  const test = async () => {
+    if (!tg.botToken.trim() || !tg.chatId.trim()) {
+      setRes({ ok: false, text: "Заполните токен бота и chat id" });
+      return;
+    }
+    setBusy(true); setRes(null);
+    try {
+      const name = await tgTestSend(tg);
+      setRes({ ok: true, text: `Готово! Бот «${name}» прислал тестовое сообщение` });
+      toast("Telegram подключён", "ok");
+    } catch (e) {
+      setRes({ ok: false, text: e instanceof Error ? e.message : "Не удалось отправить" });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Reveal delay={70}>
+      <section className="card p-6">
+        <h3 className="mb-1 flex items-center gap-2 font-display text-[16px] font-bold">
+          <Icon name="send" size={18} className="text-accent" />Telegram-напоминания
+        </h3>
+        <p className="mb-4 text-[12.5px] leading-relaxed text-mute">
+          «Пора покормить» и события вет-календаря — прямо в личный чат с вашим ботом.
+        </p>
+
+        <button
+          onClick={() => setTg({ enabled: !tg.enabled })}
+          className="flex w-full items-center gap-3 rounded-xl border border-line bg-bg2/50 px-4 py-3 text-left transition hover:border-mute"
+        >
+          <span className={cx("relative h-6 w-11 shrink-0 rounded-full transition-colors", tg.enabled ? "bg-accent" : "bg-line")}>
+            <span className={cx("absolute top-0.5 h-5 w-5 rounded-full bg-surface shadow transition-all", tg.enabled ? "left-[22px]" : "left-0.5")} />
+          </span>
+          <span className="flex-1">
+            <span className="block text-[13.5px] font-bold">Отправлять в Telegram</span>
+            <span className="block text-[12px] text-mute">{tg.enabled ? "напоминания активны" : "выключено"}</span>
+          </span>
+          <Icon name={tg.enabled ? "check" : "x"} size={17} className={tg.enabled ? "text-ok" : "text-mute"} />
+        </button>
+
+        <div className="mt-3.5 space-y-3">
+          <Field label="Токен бота" hint="создайте бота у @BotFather и вставьте токен">
+            <input
+              className={inputCls} type="password" autoComplete="off" spellCheck={false}
+              value={tg.botToken} placeholder="123456789:AAE…"
+              onChange={(e) => { setTg({ botToken: e.target.value }); setRes(null); }}
+            />
+          </Field>
+          <Field label="Chat ID" hint="напишите боту, затем узнайте id у @userinfobot">
+            <input
+              className={inputCls} inputMode="numeric" spellCheck={false}
+              value={tg.chatId} placeholder="987654321"
+              onChange={(e) => { setTg({ chatId: e.target.value }); setRes(null); }}
+            />
+          </Field>
+        </div>
+
+        <div className="mt-3.5 space-y-2">
+          {([
+            ["remindDue", "Напоминать, когда пора выполнить активность", "просроченные «покормить», «поменять воду»…"],
+            ["remindVet", "Напоминать о событиях вет-календаря", "прививки, обработки, визиты к врачу"],
+          ] as const).map(([key, label, sub]) => (
+            <button
+              key={key}
+              onClick={() => setTg({ [key]: !tg[key] } as Partial<typeof tg>)}
+              className="flex w-full items-center gap-3 rounded-xl px-2 py-1.5 text-left transition hover:bg-raise"
+            >
+              <span className={cx(
+                "inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-md border transition-all",
+                tg[key] ? "border-accent bg-accent text-accent-ink" : "border-line",
+              )}>
+                {tg[key] && <Icon name="check" size={12} />}
+              </span>
+              <span className="min-w-0">
+                <span className="block text-[13px] font-bold">{label}</span>
+                <span className="block text-[11.5px] text-mute">{sub}</span>
+              </span>
+            </button>
+          ))}
+        </div>
+
+        {res && (
+          <p className={cx(
+            "anim-fade mt-3.5 flex items-start gap-2 rounded-xl px-3 py-2.5 text-[12.5px] font-medium",
+            res.ok ? "bg-ok/12 text-ok" : "bg-danger/12 text-danger",
+          )}>
+            <Icon name={res.ok ? "check" : "alert"} size={15} className="mt-0.5 shrink-0" />{res.text}
+          </p>
+        )}
+
+        <Btn className="mt-4 w-full" onClick={test} disabled={busy}>
+          <Icon name={busy ? "clock" : "send"} size={16} />
+          {busy ? "Отправляем…" : "Проверить и отправить тест"}
+        </Btn>
+        <p className="mt-3 text-[11.5px] leading-relaxed text-mute">
+          Токен и id хранятся только в этом браузере; сообщения уходят напрямую
+          с вашего устройства в Telegram Bot API. Каждое напоминание приходит один раз.
+        </p>
+      </section>
+    </Reveal>
   );
 }
 

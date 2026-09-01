@@ -2,20 +2,28 @@ import {
   createContext, ReactNode, useCallback, useContext, useEffect, useMemo, useRef, useState,
 } from "react";
 import type {
-  ActivityDef, ChatMessage, DB, IconName, LogEntry, Pet, Species, ThemeId, User,
+  ActivityDef, ChatMessage, DB, IconName, LogEntry, Pet, Species, TelegramCfg,
+  ThemeId, User, VetEvent, VetKind,
 } from "../lib/types";
 import { LEVELS, genInvite, levelFor, uid } from "../lib/types";
 import {
-  computeDue, ensureDemo, limitsFor, loadActivePet, loadDB, loadNotif, loadSession, loadTheme,
-  loginUser, makeGuest, makePetWithActs, pawsOf, registerUser,
-  saveActivePet, saveDB, saveNotif, saveSession, saveTheme,
+  computeDue, dueLabel, durText, ensureDemo, limitsFor, loadActivePet, loadDB,
+  loadNotif, loadSession, loadTelegram, loadTheme,
+  loginUser, makeGuest, makePetWithActs, nextOccurrence, pawsOf, registerUser,
+  saveActivePet, saveDB, saveNotif, saveSession, saveTelegram, saveTheme, startOfDay,
 } from "../lib/db";
+import { markSent, tgSend, wasSent } from "../lib/telegram";
 
 export interface Toast { id: string; text: string; kind: "ok" | "warn" | "err" | "paw" }
 
 export interface NewActInput {
   title: string; icon: IconName; color: string; paws: number;
   limitDay: number; limitWeek: number; limitMonth: number; remindH: number;
+}
+
+export interface VetInput {
+  title: string; kind: VetKind; date: string; time?: string;
+  repeat: VetEvent["repeat"]; note?: string;
 }
 
 interface Ctx {
@@ -27,6 +35,8 @@ interface Ctx {
   acts: ActivityDef[];
   logs: LogEntry[];
   chat: ChatMessage[];
+  events: VetEvent[];
+  tg: TelegramCfg;
   owners: User[];
   theme: ThemeId;
   toasts: Toast[];
@@ -41,6 +51,10 @@ interface Ctx {
   createPet: (data: { name: string; species: Species; breed: string; birthday: string; color: string; img?: string }) => void;
   complete: (actId: string, img?: string) => void;
   sendMessage: (text: string) => void;
+  addEvent: (input: VetInput) => string | null;
+  updateEvent: (id: string, patch: Partial<VetEvent>) => void;
+  deleteEvent: (id: string) => void;
+  setTg: (patch: Partial<TelegramCfg>) => void;
   addAct: (input: NewActInput) => string | null;
   updateAct: (id: string, patch: Partial<ActivityDef>) => void;
   deleteAct: (id: string) => void;
@@ -66,6 +80,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [now, setNow] = useState(() => Date.now());
   const [notifOn, setNotifOn] = useState(() => loadNotif());
+  const [tg, setTgState] = useState<TelegramCfg>(() => loadTelegram());
   const lastSaved = useRef<string>("");
   const notified = useRef<Set<string>>(new Set());
 
@@ -109,6 +124,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
     () => (pet ? db.chat.filter((m) => m.petId === pet.id).sort((a, b) => a.at - b.at) : []),
     [db, pet],
   );
+  const events = useMemo(
+    () => (pet ? db.events.filter((e) => e.petId === pet.id) : []),
+    [db, pet],
+  );
   const acts = useMemo(() => (pet ? db.acts.filter((a) => a.petId === pet.id) : []), [db, pet]);
   const logs = useMemo(() => (pet ? db.logs.filter((l) => l.petId === pet.id) : []), [db, pet]);
   const owners = useMemo(
@@ -130,24 +149,63 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, []);
   const dismissToast = (id: string) => setToasts((t) => t.filter((x) => x.id !== id));
 
-  /* ---------- браузерные уведомления ---------- */
+  /* ---------- напоминания: браузер + Telegram ---------- */
+  const tgReady = tg.enabled && tg.botToken.trim().length > 10 && tg.chatId.trim().length > 0;
   useEffect(() => {
-    if (!notifOn || !pet || !("Notification" in window) || Notification.permission !== "granted") return;
+    const canNotify = notifOn && "Notification" in window && Notification.permission === "granted";
+    if (!pet || (!canNotify && !tgReady)) return;
     const check = () => {
-      for (const it of computeDue(acts, logs, Date.now())) {
-        if (it.overdueMin !== null && it.overdueMin > 0 && it.dueAt) {
-          const key = `${it.act.id}@${it.dueAt}`;
-          if (!notified.current.has(key)) {
-            notified.current.add(key);
-            try { new Notification("Лапометр", { body: `${pet.name}: пора «${it.act.title}»` }); } catch { /* noop */ }
+      const t = Date.now();
+      const items: { key: string; text: string }[] = [];
+
+      /* активности с напоминанием */
+      if (tg.remindDue || canNotify) {
+        for (const it of computeDue(acts, logs, t)) {
+          if (it.overdueMin !== null && it.overdueMin > 0 && it.dueAt) {
+            items.push({
+              key: `${it.act.id}@${it.dueAt}`,
+              text: `«${it.act.title}» — просрочено на ${durText(it.overdueMin)}`,
+            });
           }
+        }
+      }
+      /* вет-события: сегодня, просроченные и (для разовых) прошедшие */
+      if (tg.remindVet || canNotify) {
+        for (const ev of events) {
+          const occ = nextOccurrence(ev, t);
+          const dueToday = startOfDay(occ) <= t;
+          if (dueToday) {
+            items.push({ key: `vet@${ev.id}@${occ}`, text: `«${ev.title}» — ${dueLabel(ev, t).text}` });
+          }
+        }
+      }
+
+      /* браузерные уведомления */
+      if (canNotify) {
+        for (const it of items) {
+          if (!notified.current.has(it.key)) {
+            notified.current.add(it.key);
+            try { new Notification("Лапометр", { body: `${pet.name}: ${it.text}` }); } catch { /* noop */ }
+          }
+        }
+      }
+      /* telegram: одно сводное сообщение, каждый пункт — один раз */
+      if (tgReady) {
+        const fresh = items.filter((i) => !wasSent(i.key));
+        if (fresh.length > 0) {
+          const html = `🐾 <b>Лапометр: пора позаботиться</b>\n\n${
+            fresh.map((f) => `• ${pet.name}: ${f.text}`).join("\n")
+          }\n\nОтметьте выполнение в журнале!`;
+          tgSend(tg, html)
+            .then(() => fresh.forEach((f) => markSent(f.key)))
+            .catch(() => { /* сеть/лимиты — попробуем в следующий тик */ });
         }
       }
     };
     check();
     const t = setInterval(check, 30000);
     return () => clearInterval(t);
-  }, [notifOn, pet, acts, logs]);
+  }, [notifOn, tgReady, tg, pet, acts, logs, events]);
 
   /* ---------- действия ---------- */
   const register = (email: string, pass: string, name: string): string | null => {
@@ -291,6 +349,43 @@ export function AppProvider({ children }: { children: ReactNode }) {
     commit(d);
   };
 
+  const addEvent = (input: VetInput): string | null => {
+    if (!pet) return "Сначала создайте питомца";
+    if (!input.title.trim()) return "Введите название события";
+    if (!input.date) return "Выберите дату";
+    const d = structuredClone(db);
+    d.events.push({
+      id: uid(), petId: pet.id, title: input.title.trim(), kind: input.kind,
+      date: input.date, time: input.time || undefined, repeat: input.repeat,
+      note: input.note?.trim() || undefined,
+    });
+    commit(d);
+    toast("Событие добавлено в вет-календарь");
+    return null;
+  };
+
+  const updateEvent = (id: string, patch: Partial<VetEvent>) => {
+    const d = structuredClone(db);
+    const ev = d.events.find((e) => e.id === id);
+    if (!ev) return;
+    Object.assign(ev, patch);
+    commit(d);
+    toast("Событие обновлено");
+  };
+
+  const deleteEvent = (id: string) => {
+    const d = structuredClone(db);
+    d.events = d.events.filter((e) => e.id !== id);
+    commit(d);
+    toast("Событие удалено", "warn");
+  };
+
+  const setTg = (patch: Partial<TelegramCfg>) => {
+    const next = { ...tg, ...patch };
+    setTgState(next);
+    saveTelegram(next);
+  };
+
   const removeOwner = (ownerId: string) => {
     if (!pet) return;
     if (ownerId === user?.id) { toast("Нельзя удалить самого себя", "warn"); return; }
@@ -328,7 +423,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   };
 
   const resetAll = () => {
-    ["lapometr.db.v1", "lapometr.notif.v1"].forEach((k) => localStorage.removeItem(k));
+    ["lapometr.db.v1", "lapometr.notif.v1", "lapometr.tgsent.v1"].forEach((k) => localStorage.removeItem(k));
     sessionStorage.removeItem("lapometr.session.v1");
     sessionStorage.removeItem("lapometr.activepet.v1");
     location.reload();
@@ -354,6 +449,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     addAct, updateAct, deleteAct, regenInvite, joinPet, removeOwner,
     setTheme, toast, dismissToast, toggleNotif, exportData, resetAll, replaceDb,
     userPets, setActivePet, chat, sendMessage,
+    events, tg, setTg, addEvent, updateEvent, deleteEvent,
   };
 
   return <AppCtx.Provider value={value}>{children}</AppCtx.Provider>;

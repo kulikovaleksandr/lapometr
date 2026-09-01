@@ -7,15 +7,16 @@ import { JournalScreen } from "./screens/Journal";
 import { DuelScreen } from "./screens/Duel";
 import { StatsScreen } from "./screens/Stats";
 import { SettingsScreen } from "./screens/Settings";
+import { VetScreen } from "./screens/Vet";
 import { Icon, Logo, PetFace } from "./components/icons";
 import { Modal, UserAvatar, cx } from "./components/ui";
 import { PetForm } from "./components/PetForm";
 import { THEMES } from "./lib/types";
 import type { IconName } from "./lib/types";
-import { computeDue } from "./lib/db";
+import { computeDue, nextOccurrence, startOfDay } from "./lib/db";
 
-export type Tab = "home" | "journal" | "duel" | "stats" | "settings";
-const TABS: Tab[] = ["home", "journal", "duel", "stats", "settings"];
+export type Tab = "home" | "journal" | "duel" | "vet" | "stats" | "settings";
+const TABS: Tab[] = ["home", "journal", "duel", "vet", "stats", "settings"];
 
 /* ---- PWA: установка на устройство + офлайн-статус ---- */
 interface BIPEvent extends Event {
@@ -65,6 +66,7 @@ const NAV: { id: Tab; label: string; icon: IconName }[] = [
   { id: "home", label: "Сегодня", icon: "home" },
   { id: "journal", label: "Журнал", icon: "book" },
   { id: "duel", label: "Дуэль", icon: "trophy" },
+  { id: "vet", label: "Здоровье", icon: "stetho" },
   { id: "stats", label: "Статистика", icon: "chart" },
   { id: "settings", label: "Настройки", icon: "gear" },
 ];
@@ -99,11 +101,13 @@ function Root() {
 }
 
 function Shell() {
-  const { user, pet, userPets, setActivePet, createPet, acts, logs, now, theme, setTheme, logout, toasts, dismissToast, toast } = useApp();
+  const { user, pet, userPets, setActivePet, createPet, acts, logs, events, now, theme, setTheme, logout, toasts, dismissToast, toast } = useApp();
   const [tab, setTab] = useState<Tab>(initialTab);
   const [menu, setMenu] = useState(false);
   const [addPet, setAddPet] = useState(false);
   const { canInstall, installed, online, promptInstall } = usePwa();
+
+  const vetDueN = events.filter((ev) => startOfDay(nextOccurrence(ev, now)) <= now).length;
   const wasOnline = useRef(online);
 
   useEffect(() => {
@@ -261,6 +265,11 @@ function Shell() {
                   {n.id === "home" && overdueN > 0 && tab !== "home" && (
                     <span className="ml-auto h-2 w-2 rounded-full bg-danger" style={{ animation: "pulse-dot 1.6s infinite" }} />
                   )}
+                  {n.id === "vet" && vetDueN > 0 && tab !== "vet" && (
+                    <span className="ml-auto inline-flex h-4.5 min-w-[18px] items-center justify-center rounded-full bg-danger px-1 font-display text-[10px] font-bold text-white" style={{ height: 18 }}>
+                      {vetDueN}
+                    </span>
+                  )}
                 </button>
               </li>
             ))}
@@ -278,6 +287,7 @@ function Shell() {
           {tab === "home" && <HomeScreen onNav={setTab} />}
           {tab === "journal" && <JournalScreen />}
           {tab === "duel" && <DuelScreen onCopy={copy} />}
+          {tab === "vet" && <VetScreen />}
           {tab === "stats" && <StatsScreen />}
           {tab === "settings" && <SettingsScreen onCopy={copy} />}
           <footer className="mt-10 border-t border-line pt-5 text-center text-[12px] text-mute/80">
@@ -288,7 +298,7 @@ function Shell() {
 
       {/* ---- Нижняя навигация (mobile) ---- */}
       <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-line bg-bg/90 backdrop-blur-md lg:hidden" style={{ paddingBottom: "env(safe-area-inset-bottom)" }}>
-        <div className="mx-auto grid max-w-md grid-cols-5">
+        <div className="mx-auto grid max-w-lg grid-cols-6">
           {NAV.map((n) => (
             <button
               key={n.id} onClick={() => setTab(n.id)}
@@ -299,6 +309,9 @@ function Shell() {
               {tab === n.id && <span className="absolute top-0 h-0.5 w-8 rounded-full bg-accent" />}
               {n.id === "home" && overdueN > 0 && tab !== "home" && (
                 <span className="absolute right-[22%] top-1.5 h-2 w-2 rounded-full bg-danger" />
+              )}
+              {n.id === "vet" && vetDueN > 0 && tab !== "vet" && (
+                <span className="absolute right-[18%] top-1.5 h-2 w-2 rounded-full bg-danger" style={{ animation: "pulse-dot 1.6s infinite" }} />
               )}
             </button>
           ))}

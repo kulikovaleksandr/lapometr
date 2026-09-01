@@ -172,6 +172,10 @@ const P: Record<IconName, ReactNode> = {
   download: <path d="M12 3v12M7.5 10.5 12 15l4.5-4.5M4.5 20h15" />,
   upload: <path d="M12 15V3M7.5 7.5 12 3l4.5 4.5M4.5 20h15" />,
   cloud: <path d="M7 18.5h10a4 4 0 0 0 .8-7.92 5.5 5.5 0 0 0-10.7-1.16A4.6 4.6 0 0 0 7 18.5z" />,
+  calendar: <path d="M4.5 6.5h15a1 1 0 0 1 1 1V18a1.5 1.5 0 0 1-1.5 1.5H5A1.5 1.5 0 0 1 3.5 18V7.5a1 1 0 0 1 1-1zM3.5 10.5h17M8 3.5v4M16 3.5v4" />,
+  stetho: <path d="M6 4v5a3.5 3.5 0 0 0 7 0V4M6 4H4.5M13 4h1.5M9.5 12.5v2a3.5 3.5 0 0 0 7 0v-1.7M18.5 10.8a2 2 0 1 1-4 0 2 2 0 0 1 4 0z" />,
+  send: <path d="m20 4-9.5 9.5M20 4 13 20l-2.5-6.5L4 11l16-7z" />,
+  repeat: <path d="m17 2.5 3 3-3 3M20 5.5H8a4 4 0 0 0-4 4v1M7 21.5l-3-3 3-3M4 18.5h12a4 4 0 0 0 4-4v-1" />,
   alert: <path d="M12 4 2.8 19.5h18.4L12 4zM12 10v4M12 17h.01" />,
   dot: <circle cx="12" cy="12" r="4.5" fill="currentColor" stroke="none" />,
 };

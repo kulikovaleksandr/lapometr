@@ -6,7 +6,8 @@ export type IconName =
   | "bell" | "trophy" | "flame" | "chart" | "users" | "gear" | "out" | "plus"
   | "check" | "x" | "copy" | "crown" | "moon" | "sun" | "book" | "home"
   | "camera" | "edit" | "trash" | "clock" | "info" | "spark" | "chev"
-  | "download" | "upload" | "cloud" | "alert" | "dot";
+  | "download" | "upload" | "cloud" | "alert" | "dot"
+  | "calendar" | "stetho" | "send" | "repeat";
 
 export interface User {
   id: string;
@@ -64,6 +65,27 @@ export interface ChatMessage {
   at: number;
 }
 
+export type VetKind = "shot" | "pill" | "vet" | "check" | "other";
+
+export interface VetEvent {
+  id: string;
+  petId: string;
+  title: string;
+  kind: VetKind;
+  date: string;        // YYYY-MM-DD — первое событие / дата без повтора
+  time?: string;       // HH:MM
+  repeat: "none" | "monthly" | "yearly";
+  note?: string;
+}
+
+export interface TelegramCfg {
+  botToken: string;
+  chatId: string;
+  enabled: boolean;
+  remindDue: boolean;  // «пора выполнить активность»
+  remindVet: boolean;  // события вет-календаря
+}
+
 export interface DB {
   v: number;
   users: User[];
@@ -71,6 +93,7 @@ export interface DB {
   acts: ActivityDef[];
   logs: LogEntry[];
   chat: ChatMessage[];
+  events: VetEvent[];
 }
 
 export type ThemeId = "night" | "day" | "latte" | "forest" | "olive";

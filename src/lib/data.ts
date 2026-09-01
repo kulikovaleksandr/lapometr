@@ -135,6 +135,25 @@ export function buildDemoDB(): DB {
   }
   add2("bath", 6, 12, 20);
 
+  /* вет-календарь: события с привязкой к «сегодня», чтобы календарь жил */
+  const iso = (d: Date) => {
+    const p = (n: number) => String(n).padStart(2, "0");
+    return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+  };
+  const shift = (months: number, days = 0) => {
+    const d = new Date(now);
+    d.setDate(1); d.setMonth(d.getMonth() + months); d.setDate(Math.min(28, new Date(now).getDate()));
+    d.setDate(d.getDate() + days);
+    return iso(d);
+  };
+  const events: DB["events"] = [
+    { id: uid(), petId: pet.id, title: "Обработка от глистов", kind: "pill", date: shift(-1), repeat: "monthly", note: "Мильбемакс, по весу" },
+    { id: uid(), petId: pet.id, title: "Комплексная вакцинация", kind: "shot", date: shift(-11), repeat: "yearly", note: "Нобивак Tricat + бешенство" },
+    { id: uid(), petId: pet.id, title: "Осмотр у ветеринара", kind: "vet", date: shift(0), time: "15:00", repeat: "none", note: "Клиника «Белый клык», врач Ирина" },
+    { id: uid(), petId: pet.id, title: "Чистка зубов", kind: "check", date: shift(0, 12), repeat: "monthly" },
+    { id: uid(), petId: pet2.id, title: "Осмотр крыльев и клюва", kind: "check", date: shift(0, 5), repeat: "monthly", note: "Проверить маховые перья" },
+  ];
+
   logs.sort((a, b) => a.at - b.at);
-  return { v: 1, users: [u1, u2], pets: [pet, pet2], acts: [...acts, ...acts2], logs, chat: [] };
+  return { v: 1, users: [u1, u2], pets: [pet, pet2], acts: [...acts, ...acts2], logs, chat: [], events };
 }

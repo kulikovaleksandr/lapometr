@@ -1,5 +1,6 @@
 import {
-  ActivityDef, DB, LogEntry, Pet, ThemeId, User, hashPass, uid,
+  ActivityDef, DB, IconName, LogEntry, Pet, TelegramCfg, ThemeId, User,
+  VetEvent, VetKind, hashPass, uid,
 } from "./types";
 import { AVATAR_COLORS, buildDemoDB, defaultActs, DEMO_EMAIL } from "./data";
 
@@ -15,11 +16,12 @@ export function loadDB(): DB {
       const db = JSON.parse(raw) as DB;
       if (db && Array.isArray(db.users) && Array.isArray(db.logs)) {
         if (!Array.isArray(db.chat)) db.chat = []; // миграция со старых версий
+        if (!Array.isArray(db.events)) db.events = [];
         return db;
       }
     }
   } catch { /* повреждённые данные — начинаем заново */ }
-  return { v: 1, users: [], pets: [], acts: [], logs: [], chat: [] };
+  return { v: 1, users: [], pets: [], acts: [], logs: [], chat: [], events: [] };
 }
 
 export function saveDB(db: DB) {
@@ -236,6 +238,7 @@ export function ensureDemo(existing: DB): { db: DB; user: User } {
     acts: [...existing.acts, ...demo.acts],
     logs: [...existing.logs, ...demo.logs],
     chat: [...existing.chat, ...demo.chat],
+    events: [...existing.events, ...demo.events],
   };
   return { db, user: demo.users[0] };
 }
@@ -269,9 +272,83 @@ export function fileToAvatar(file: File, size = 256, quality = 0.85, square = tr
         ctx.drawImage(img, 0, 0, w, h);
       }
       URL.revokeObjectURL(url);
-      resolve(c.toDataURL("image/jpeg", 0.85));
+      resolve(c.toDataURL("image/jpeg", quality));
     };
     img.onerror = () => { URL.revokeObjectURL(url); reject(new Error("bad-image")); };
     img.src = url;
   });
 }
+
+/* ================= вет-календарь ================= */
+
+export const VET_KINDS: { id: VetKind; label: string; icon: IconName; color: string }[] = [
+  { id: "shot",  label: "Прививка",    icon: "syringe", color: "#e07856" },
+  { id: "pill",  label: "Таблетки",    icon: "pill",    color: "#b3a3e0" },
+  { id: "vet",   label: "Ветеринар",   icon: "stetho",  color: "#8fb7c9" },
+  { id: "check", label: "Осмотр",      icon: "spark",   color: "#9db98a" },
+  { id: "other", label: "Другое",      icon: "calendar", color: "#c9a06a" },
+];
+export const vetKind = (id: VetKind) => VET_KINDS.find((k) => k.id === id) ?? VET_KINDS[4];
+export const REPEAT_LABEL: Record<VetEvent["repeat"], string> = {
+  none: "без повтора", monthly: "ежемесячно", yearly: "ежегодно",
+};
+
+const parseDMY = (date: string): Date => {
+  const [y, m, d] = date.split("-").map(Number);
+  return new Date(y, (m || 1) - 1, d || 1);
+};
+
+/** Ближайшее наступление события (с учётом повтора), включая «сегодня» */
+export function nextOccurrence(ev: VetEvent, now: number): number {
+  const base = parseDMY(ev.date);
+  const today = startOfDay(now);
+  let d = base.getTime();
+  if (ev.repeat === "monthly") {
+    const anchor = new Date(base);
+    while (d < today) {
+      anchor.setMonth(anchor.getMonth() + 1);
+      d = anchor.getTime();
+    }
+  } else if (ev.repeat === "yearly") {
+    const anchor = new Date(base);
+    while (d < today) {
+      anchor.setFullYear(anchor.getFullYear() + 1);
+      d = anchor.getTime();
+    }
+  }
+  if (ev.time) {
+    const [h, m] = ev.time.split(":").map(Number);
+    d += (h || 0) * 3600e3 + (m || 0) * 60e3;
+  }
+  return d;
+}
+
+/** «сегодня» / «завтра» / «через N дней» / «просрочено на N дней» */
+export function dueLabel(ev: VetEvent, now: number): { text: string; tone: "ok" | "warn" | "danger" } {
+  const occ = nextOccurrence(ev, now);
+  const today = startOfDay(now);
+  const dayDiff = Math.round((startOfDay(occ) - today) / DAY);
+  if (ev.repeat === "none" && occ < now) {
+    const over = Math.max(1, Math.round((today - startOfDay(occ)) / DAY));
+    return { text: `просрочено на ${over} ${plural(over, "день", "дня", "дней")}`, tone: "danger" };
+  }
+  if (dayDiff === 0) return { text: ev.time ? `сегодня в ${ev.time}` : "сегодня", tone: "warn" };
+  if (dayDiff === 1) return { text: "завтра", tone: "warn" };
+  if (dayDiff < 0) return { text: "сегодня", tone: "warn" };
+  return { text: `через ${dayDiff} ${plural(dayDiff, "день", "дня", "дней")}`, tone: "ok" };
+}
+
+export const vetDateLabel = (ev: VetEvent): string =>
+  parseDMY(ev.date).toLocaleDateString("ru-RU", { day: "numeric", month: "long", year: "numeric" });
+
+/* ================= telegram ================= */
+
+const TG_KEY = "lapometr.telegram.v1";
+export function loadTelegram(): TelegramCfg {
+  try {
+    const raw = localStorage.getItem(TG_KEY);
+    if (raw) return { remindDue: true, remindVet: true, enabled: false, botToken: "", chatId: "", ...JSON.parse(raw) };
+  } catch { /* noop */ }
+  return { botToken: "", chatId: "", enabled: false, remindDue: true, remindVet: true };
+}
+export const saveTelegram = (cfg: TelegramCfg) => localStorage.setItem(TG_KEY, JSON.stringify(cfg));
