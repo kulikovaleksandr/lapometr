@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { AppProvider, useApp } from "./state/AppContext";
 import { AuthScreen } from "./screens/Auth";
 import { OnboardingScreen } from "./screens/Onboarding";
@@ -14,6 +14,51 @@ import type { IconName } from "./lib/types";
 import { computeDue } from "./lib/db";
 
 export type Tab = "home" | "journal" | "duel" | "stats" | "settings";
+const TABS: Tab[] = ["home", "journal", "duel", "stats", "settings"];
+
+/* ---- PWA: установка на устройство + офлайн-статус ---- */
+interface BIPEvent extends Event {
+  prompt: () => Promise<void>;
+  userChoice: Promise<{ outcome: "accepted" | "dismissed" }>;
+}
+
+function usePwa() {
+  const [installEvt, setInstallEvt] = useState<BIPEvent | null>(null);
+  const [installed, setInstalled] = useState(false);
+  const [online, setOnline] = useState(() => navigator.onLine);
+
+  useEffect(() => {
+    const onPrompt = (e: Event) => { e.preventDefault(); setInstallEvt(e as BIPEvent); };
+    const onInstalled = () => { setInstalled(true); setInstallEvt(null); };
+    const on = () => setOnline(true);
+    const off = () => setOnline(false);
+    window.addEventListener("beforeinstallprompt", onPrompt);
+    window.addEventListener("appinstalled", onInstalled);
+    window.addEventListener("online", on);
+    window.addEventListener("offline", off);
+    return () => {
+      window.removeEventListener("beforeinstallprompt", onPrompt);
+      window.removeEventListener("appinstalled", onInstalled);
+      window.removeEventListener("online", on);
+      window.removeEventListener("offline", off);
+    };
+  }, []);
+
+  const promptInstall = async () => {
+    if (!installEvt) return false;
+    installEvt.prompt();
+    const r = await installEvt.userChoice;
+    if (r.outcome === "accepted") { setInstalled(true); setInstallEvt(null); }
+    return r.outcome === "accepted";
+  };
+
+  return { canInstall: !!installEvt, installed, online, promptInstall };
+}
+
+const initialTab = (): Tab => {
+  const t = new URLSearchParams(window.location.search).get("tab") as Tab | null;
+  return t && TABS.includes(t) ? t : "home";
+};
 
 const NAV: { id: Tab; label: string; icon: IconName }[] = [
   { id: "home", label: "Сегодня", icon: "home" },
@@ -54,8 +99,21 @@ function Root() {
 
 function Shell() {
   const { user, pet, acts, logs, now, theme, setTheme, logout, toasts, dismissToast, toast } = useApp();
-  const [tab, setTab] = useState<Tab>("home");
+  const [tab, setTab] = useState<Tab>(initialTab);
   const [menu, setMenu] = useState(false);
+  const { canInstall, installed, online, promptInstall } = usePwa();
+  const wasOnline = useRef(online);
+
+  useEffect(() => {
+    if (wasOnline.current === online) return;
+    wasOnline.current = online;
+    toast(online ? "Снова в сети" : "Офлайн: данные сохраняются на устройстве", online ? "ok" : "warn");
+  }, [online, toast]);
+
+  const install = async () => {
+    const ok = await promptInstall();
+    if (ok) toast("Лапометр установлен — ищите на рабочем столе", "paw");
+  };
 
   const overdueN = computeDue(acts, logs, now).filter((d) => d.overdueMin === null || d.overdueMin > 0).length;
 
@@ -83,6 +141,29 @@ function Shell() {
           )}
 
           <div className="ml-auto flex items-center gap-2">
+            {/* офлайн-индикатор */}
+            {!online && (
+              <span
+                className="anim-fade hidden items-center gap-1.5 rounded-full bg-warn/15 px-3 py-1.5 text-[12px] font-bold text-warn sm:inline-flex"
+                title={installed ? "Установлено: работает полностью офлайн" : "Данные сохраняются на этом устройстве"}
+              >
+                <span className="h-1.5 w-1.5 rounded-full bg-warn animate-[pulse-dot_2s_ease-in-out_infinite]" />
+                офлайн
+              </span>
+            )}
+
+            {/* установка приложения */}
+            {canInstall && (
+              <button
+                onClick={install}
+                className="anim-pop inline-flex items-center gap-2 rounded-xl bg-accent px-3.5 py-2 text-[13px] font-bold text-accent-ink shadow transition-all hover:-translate-y-0.5 hover:brightness-105 active:translate-y-0"
+                title="Установить Лапометр как приложение"
+              >
+                <Icon name="download" size={16} />
+                <span className="hidden md:inline">Установить</span>
+              </button>
+            )}
+
             {/* темы */}
             <div className="hidden items-center gap-1.5 rounded-full border border-line bg-surface px-2.5 py-1.5 md:flex" title="Тема оформления">
               {THEMES.map((t) => (
