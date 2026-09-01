@@ -53,6 +53,15 @@ export interface LogEntry {
   actId: string;
   ownerId: string;
   at: number;
+  img?: string;
+}
+
+export interface ChatMessage {
+  id: string;
+  petId: string;
+  authorId: string;
+  text: string;
+  at: number;
 }
 
 export interface DB {
@@ -61,6 +70,7 @@ export interface DB {
   pets: Pet[];
   acts: ActivityDef[];
   logs: LogEntry[];
+  chat: ChatMessage[];
 }
 
 export type ThemeId = "night" | "day" | "latte" | "forest" | "olive";

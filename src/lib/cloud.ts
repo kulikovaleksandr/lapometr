@@ -190,6 +190,7 @@ export async function cloudPull(): Promise<CloudResult<CloudSnapshot | null>> {
   if (!Array.isArray(d.users) || !Array.isArray(d.pets) || !Array.isArray(d.logs)) {
     return { ok: false, error: "Снапшот повреждён" };
   }
+  if (!Array.isArray(d.chat)) d.chat = []; // снапшоты старых версий — без чата
   return { ok: true, data: { data: d, updatedAt: Date.parse(data.updated_at) } };
 }
 

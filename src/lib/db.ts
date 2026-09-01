@@ -13,10 +13,13 @@ export function loadDB(): DB {
     const raw = localStorage.getItem(DB_KEY);
     if (raw) {
       const db = JSON.parse(raw) as DB;
-      if (db && Array.isArray(db.users) && Array.isArray(db.logs)) return db;
+      if (db && Array.isArray(db.users) && Array.isArray(db.logs)) {
+        if (!Array.isArray(db.chat)) db.chat = []; // миграция со старых версий
+        return db;
+      }
     }
   } catch { /* повреждённые данные — начинаем заново */ }
-  return { v: 1, users: [], pets: [], acts: [], logs: [] };
+  return { v: 1, users: [], pets: [], acts: [], logs: [], chat: [] };
 }
 
 export function saveDB(db: DB) {
@@ -29,6 +32,14 @@ export const loadSession = () => sessionStorage.getItem(SES_KEY);
 export const saveSession = (id: string | null) => {
   if (id) sessionStorage.setItem(SES_KEY, id);
   else sessionStorage.removeItem(SES_KEY);
+};
+
+/* Активный питомец — тоже на вкладку: в двух вкладках можно листать разных */
+const PET_KEY = "lapometr.activepet.v1";
+export const loadActivePet = () => sessionStorage.getItem(PET_KEY);
+export const saveActivePet = (id: string | null) => {
+  if (id) sessionStorage.setItem(PET_KEY, id);
+  else sessionStorage.removeItem(PET_KEY);
 };
 
 export function loadTheme(): ThemeId {
@@ -224,6 +235,7 @@ export function ensureDemo(existing: DB): { db: DB; user: User } {
     pets: [...existing.pets, ...demo.pets],
     acts: [...existing.acts, ...demo.acts],
     logs: [...existing.logs, ...demo.logs],
+    chat: [...existing.chat, ...demo.chat],
   };
   return { db, user: demo.users[0] };
 }
@@ -232,18 +244,30 @@ export function makePetWithActs(pet: Pet): { pet: Pet; acts: ActivityDef[] } {
   return { pet, acts: defaultActs(pet.id) };
 }
 
-export function fileToAvatar(file: File): Promise<string> {
+/** Фото для записи журнала: до 640 px по длинной стороне, jpeg 0.82 */
+export const fileToPhoto = (file: File) => fileToAvatar(file, 640, 0.82, false);
+
+export function fileToAvatar(file: File, size = 256, quality = 0.85, square = true): Promise<string> {
   return new Promise((resolve, reject) => {
     if (!file.type.startsWith("image/")) { reject(new Error("not-image")); return; }
     const img = new Image();
     const url = URL.createObjectURL(file);
     img.onload = () => {
-      const size = 256;
       const c = document.createElement("canvas");
-      c.width = size; c.height = size;
+      let w = img.width, h = img.height;
+      if (square) { w = h = size; }
+      else {
+        const k = Math.min(1, size / Math.max(w, h));
+        w = Math.round(w * k); h = Math.round(h * k);
+      }
+      c.width = w; c.height = h;
       const ctx = c.getContext("2d")!;
-      const m = Math.min(img.width, img.height);
-      ctx.drawImage(img, (img.width - m) / 2, (img.height - m) / 2, m, m, 0, 0, size, size);
+      if (square) {
+        const m = Math.min(img.width, img.height);
+        ctx.drawImage(img, (img.width - m) / 2, (img.height - m) / 2, m, m, 0, 0, w, h);
+      } else {
+        ctx.drawImage(img, 0, 0, w, h);
+      }
       URL.revokeObjectURL(url);
       resolve(c.toDataURL("image/jpeg", 0.85));
     };

@@ -1,18 +1,22 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useApp } from "../state/AppContext";
 import { Bar, Btn, Burst, CountUp, Modal, Reveal, Ring, UserAvatar, cx } from "../components/ui";
 import { Icon, PetFace } from "../components/icons";
 import {
-  agoText, ageText, computeDue, durText, fmtTime, limitsFor, pawsOf, plural, streakDays,
+  agoText, ageText, computeDue, durText, fileToPhoto, fmtTime, limitsFor, pawsOf, plural, streakDays,
 } from "../lib/db";
 import { speciesLabel } from "../lib/data";
 import { ActivityDef, levelFor } from "../lib/types";
 import type { Tab } from "../App";
 
 export function HomeScreen({ onNav }: { onNav: (t: Tab) => void }) {
-  const { user, pet, acts, logs, owners, now, complete } = useApp();
+  const { user, pet, acts, logs, owners, now, complete, toast } = useApp();
   const [sel, setSel] = useState<ActivityDef | null>(null);
   const [burst, setBurst] = useState(0);
+  const [photo, setPhoto] = useState<string | undefined>();
+  const photoRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => { setPhoto(undefined); }, [sel]);
 
   const total = useMemo(() => pawsOf(acts, logs), [acts, logs]);
   const lvl = levelFor(total);
@@ -33,7 +37,7 @@ export function HomeScreen({ onNav }: { onNav: (t: Tab) => void }) {
 
   const confirm = () => {
     if (!sel) return;
-    complete(sel.id);
+    complete(sel.id, photo);
     setBurst((b) => b + 1);
     setTimeout(() => setSel(null), 700);
   };
@@ -338,6 +342,33 @@ export function HomeScreen({ onNav }: { onNav: (t: Tab) => void }) {
                 Лимиты защищают от накрутки: одну активность нельзя выполнять бесконечно.
               </p>
             )}
+
+            {/* фото к записи */}
+            <div className="mt-4">
+              {photo ? (
+                <div className="relative inline-block">
+                  <img src={photo} alt="Фото к записи" className="h-24 w-24 rounded-xl border border-line object-cover shadow-sm" />
+                  <button
+                    onClick={() => setPhoto(undefined)}
+                    className="absolute -right-2 -top-2 inline-flex h-6 w-6 items-center justify-center rounded-full bg-danger text-white shadow transition-transform hover:scale-110"
+                    aria-label="Убрать фото"
+                  >
+                    <Icon name="x" size={13} />
+                  </button>
+                </div>
+              ) : (
+                <Btn variant="soft" size="sm" onClick={() => photoRef.current?.click()}>
+                  <Icon name="camera" size={15} />Прикрепить фото (необязательно)
+                </Btn>
+              )}
+              <input
+                ref={photoRef} type="file" accept="image/*" className="hidden"
+                onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  if (f) fileToPhoto(f).then(setPhoto).catch(() => toast("Не удалось прочитать фото", "err"));
+                }}
+              />
+            </div>
 
             <div className="relative mt-5">
               <Btn size="lg" className="w-full" disabled={!!selLimits.blocked} onClick={confirm}>

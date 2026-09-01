@@ -1,8 +1,9 @@
 import { useMemo, useState } from "react";
 import { useApp } from "../state/AppContext";
-import { Chip, EmptyState, Reveal, Seg, UserAvatar, cx, inputCls } from "../components/ui";
+import { Chip, EmptyState, Modal, Reveal, Seg, UserAvatar, cx, inputCls } from "../components/ui";
 import { Icon } from "../components/icons";
 import { DAY, dayLabel, fmtNum, fmtTime, pawsOf, plural, startOfDay } from "../lib/db";
+import type { LogEntry } from "../lib/types";
 
 type Period = "all" | "7" | "30";
 
@@ -11,6 +12,7 @@ export function JournalScreen() {
   const [ownerF, setOwnerF] = useState<string>("all");
   const [actF, setActF] = useState<string>("all");
   const [period, setPeriod] = useState<Period>("30");
+  const [shot, setShot] = useState<LogEntry | null>(null);
 
   const from = period === "all" ? 0 : startOfDay(now) - (Number(period) - 1) * DAY;
 
@@ -121,6 +123,15 @@ export function JournalScreen() {
                           <span className="inline-flex items-center gap-1 font-display text-[12px] font-bold text-accent">
                             <Icon name="paw" size={12} />+{a?.paws ?? 0}
                           </span>
+                          {l.img && (
+                            <button
+                              onClick={() => setShot(l)}
+                              className="group/img overflow-hidden rounded-lg border border-line shadow-sm transition-all hover:scale-105 hover:border-accent"
+                              title="Открыть фото"
+                            >
+                              <img src={l.img} alt="" className="h-9 w-9 object-cover transition-transform duration-300 group-hover/img:scale-110" />
+                            </button>
+                          )}
                           <span className="ml-auto inline-flex items-center gap-1.5 rounded-full bg-raise py-0.5 pl-0.5 pr-2.5 text-[12px] font-bold">
                             <UserAvatar user={o ?? { id: "?", email: "", name: "—", pass: "", color: "#888", createdAt: 0 }} size={20} />
                             {o?.name ?? "—"}
@@ -138,6 +149,24 @@ export function JournalScreen() {
           ))}
         </div>
       )}
+
+      {/* лайтбокс фото */}
+      <Modal open={!!shot} onClose={() => setShot(null)} title={shot ? (acts.find((x) => x.id === shot.actId)?.title ?? "Запись") : ""}>
+        {shot && (
+          <div className="p-5">
+            <img
+              src={shot.img}
+              alt="Фото записи"
+              className="anim-pop max-h-[62vh] w-full rounded-xl bg-bg2 object-contain"
+            />
+            <p className="mt-3 text-center text-[12.5px] font-medium text-mute">
+              {new Date(shot.at).toLocaleDateString("ru-RU", { day: "numeric", month: "long" })} · {fmtTime(shot.at)}
+              {" · "}
+              {owners.find((o) => o.id === shot.ownerId)?.name ?? "—"}
+            </p>
+          </div>
+        )}
+      </Modal>
     </div>
   );
 }

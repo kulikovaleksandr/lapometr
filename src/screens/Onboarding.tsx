@@ -1,10 +1,10 @@
 import { useRef, useState } from "react";
 import { useApp } from "../state/AppContext";
 import { Btn, Field, UserAvatar, cx, inputCls } from "../components/ui";
-import { Icon, Logo, PetFace } from "../components/icons";
-import { AVATAR_COLORS, SPECIES } from "../lib/data";
+import { Icon, Logo } from "../components/icons";
+import { PetForm } from "../components/PetForm";
+import { AVATAR_COLORS } from "../lib/data";
 import { fileToAvatar } from "../lib/db";
-import type { Species } from "../lib/types";
 
 export function OnboardingScreen() {
   const { user, updateProfile, createPet, toast } = useApp();
@@ -14,35 +14,14 @@ export function OnboardingScreen() {
   const [name, setName] = useState(user?.name ?? "");
   const [color, setColor] = useState(user?.color ?? AVATAR_COLORS[0]);
   const [img, setImg] = useState<string | undefined>(user?.img);
-
-  /* питомец */
-  const [petName, setPetName] = useState("");
-  const [species, setSpecies] = useState<Species>("cat");
-  const [breed, setBreed] = useState("");
-  const [birthday, setBirthday] = useState("");
-  const [petColor, setPetColor] = useState(AVATAR_COLORS[0]);
-  const [petImg, setPetImg] = useState<string | undefined>();
   const [err, setErr] = useState<string | null>(null);
-
   const fileRef = useRef<HTMLInputElement>(null);
-  const petFileRef = useRef<HTMLInputElement>(null);
-
-  const pickFile = (f: File | undefined, set: (v: string | undefined) => void) => {
-    if (!f) return;
-    fileToAvatar(f).then(set).catch(() => toast("Не удалось прочитать изображение", "err"));
-  };
 
   const next = () => {
     if (!name.trim()) { setErr("Введите имя"); return; }
     setErr(null);
     updateProfile({ name: name.trim(), color, img });
     setStep(1);
-  };
-
-  const finish = () => {
-    if (!petName.trim()) { setErr("Как зовут питомца?"); return; }
-    setErr(null);
-    createPet({ name: petName.trim(), species, breed: breed.trim(), birthday, color: petColor, img: petImg });
   };
 
   return (
@@ -81,11 +60,14 @@ export function OnboardingScreen() {
               <Field label="Ваше имя">
                 <input className={inputCls} value={name} onChange={(e) => setName(e.target.value)} placeholder="Мария" autoFocus />
               </Field>
-              <Btn variant="soft" size="sm" onClick={() => petFileRefOff(fileRef)}>
+              <Btn variant="soft" size="sm" onClick={() => fileRef.current?.click()}>
                 <Icon name="camera" size={15} />
                 {img ? "Заменить фото" : "Загрузить фото"}
               </Btn>
-              <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={(e) => pickFile(e.target.files?.[0], setImg)} />
+              <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (f) fileToAvatar(f).then(setImg).catch(() => toast("Не удалось прочитать изображение", "err"));
+              }} />
             </div>
           </div>
 
@@ -113,69 +95,15 @@ export function OnboardingScreen() {
         <div className="card anim-fadeup w-full max-w-lg p-7">
           <h1 className="font-display text-[22px] font-bold tracking-tight">Знакомьте с питомцем</h1>
           <p className="mt-1 text-[13px] text-mute">Для него заведём журнал, лапки и напоминания</p>
-
-          <div className="mt-6 grid grid-cols-3 gap-2.5 sm:grid-cols-6">
-            {SPECIES.map((s) => (
-              <button
-                key={s.id}
-                onClick={() => setSpecies(s.id)}
-                className={cx(
-                  "flex flex-col items-center gap-1 rounded-2xl border p-2.5 transition-all hover:-translate-y-0.5",
-                  species === s.id ? "border-accent bg-accent-soft" : "border-line hover:border-mute",
-                )}
-              >
-                <PetFace species={s.id} color={petColor} size={44} />
-                <span className={cx("text-[11.5px] font-bold", species === s.id ? "text-ink" : "text-mute")}>{s.label}</span>
-              </button>
-            ))}
-          </div>
-
-          <div className="mt-5 grid gap-3.5 sm:grid-cols-2">
-            <Field label="Кличка">
-              <input className={inputCls} value={petName} onChange={(e) => setPetName(e.target.value)} placeholder="Булка" autoFocus />
-            </Field>
-            <Field label="Порода (необязательно)">
-              <input className={inputCls} value={breed} onChange={(e) => setBreed(e.target.value)} placeholder="Британская" />
-            </Field>
-            <Field label="Дата рождения (необязательно)" hint={birthday ? `Возраст посчитаем сами` : undefined}>
-              <input className={inputCls} type="date" value={birthday} max={new Date().toISOString().slice(0, 10)} onChange={(e) => setBirthday(e.target.value)} />
-            </Field>
-            <div className="flex items-end">
-              <Btn variant="soft" size="md" className="w-full" onClick={() => petFileRefOff(petFileRef)}>
-                <Icon name="camera" size={15} />
-                {petImg ? "Заменить фото" : "Фото питомца"}
-              </Btn>
-              <input ref={petFileRef} type="file" accept="image/*" className="hidden" onChange={(e) => pickFile(e.target.files?.[0], setPetImg)} />
-            </div>
-          </div>
-
-          <div className="mt-5">
-            <span className="mb-2 block text-[12.5px] font-semibold text-mute">Окрас / цвет карточки</span>
-            <div className="flex flex-wrap items-center gap-2.5">
-              {AVATAR_COLORS.map((c) => (
-                <button
-                  key={c} onClick={() => setPetColor(c)} aria-label={`Цвет ${c}`}
-                  className={cx("h-9 w-9 rounded-full transition-all", petColor === c && "scale-110 ring-2 ring-ink ring-offset-2 ring-offset-surface")}
-                  style={{ background: c }}
-                />
-              ))}
-              {!petImg && <PetFace species={species} color={petColor} size={40} className="ml-2 breathe" />}
-            </div>
-          </div>
-
-          {err && <p className="anim-fade mt-4 text-[13px] font-medium text-danger">{err}</p>}
-          <div className="mt-6 flex gap-3">
-            <Btn variant="ghost" onClick={() => setStep(0)}><Icon name="chev" size={17} className="rotate-180" />Назад</Btn>
-            <Btn size="lg" className="flex-1" onClick={finish}>
-              <Icon name="paw" size={17} /> Завести журнал
-            </Btn>
+          <div className="mt-6">
+            <PetForm
+              onSubmit={(d) => createPet(d)}
+              onCancel={() => setStep(0)}
+              submitLabel="Завести журнал"
+            />
           </div>
         </div>
       )}
     </div>
   );
-}
-
-function petFileRefOff(ref: { current: HTMLInputElement | null }) {
-  ref.current?.click();
 }

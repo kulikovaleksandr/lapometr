@@ -7,8 +7,9 @@ import { JournalScreen } from "./screens/Journal";
 import { DuelScreen } from "./screens/Duel";
 import { StatsScreen } from "./screens/Stats";
 import { SettingsScreen } from "./screens/Settings";
-import { Icon, Logo } from "./components/icons";
-import { UserAvatar, cx } from "./components/ui";
+import { Icon, Logo, PetFace } from "./components/icons";
+import { Modal, UserAvatar, cx } from "./components/ui";
+import { PetForm } from "./components/PetForm";
 import { THEMES } from "./lib/types";
 import type { IconName } from "./lib/types";
 import { computeDue } from "./lib/db";
@@ -98,9 +99,10 @@ function Root() {
 }
 
 function Shell() {
-  const { user, pet, acts, logs, now, theme, setTheme, logout, toasts, dismissToast, toast } = useApp();
+  const { user, pet, userPets, setActivePet, createPet, acts, logs, now, theme, setTheme, logout, toasts, dismissToast, toast } = useApp();
   const [tab, setTab] = useState<Tab>(initialTab);
   const [menu, setMenu] = useState(false);
+  const [addPet, setAddPet] = useState(false);
   const { canInstall, installed, online, promptInstall } = usePwa();
   const wasOnline = useRef(online);
 
@@ -134,12 +136,6 @@ function Shell() {
             <Logo size={34} />
             <span className="font-display text-[17px] font-extrabold tracking-tight">Лапометр</span>
           </button>
-          {pet && (
-            <span className="ml-1 hidden items-center gap-1.5 rounded-full bg-raise px-3 py-1 text-[12px] font-bold text-mute sm:flex">
-              <Icon name="paw" size={13} className="text-accent" />{pet.name}
-            </span>
-          )}
-
           <div className="ml-auto flex items-center gap-2">
             {/* офлайн-индикатор */}
             {!online && (
@@ -219,6 +215,33 @@ function Shell() {
         </div>
       </header>
 
+      {/* ---- Переключатель питомцев ---- */}
+      <div className="relative z-10 mx-auto flex max-w-6xl items-center gap-2 overflow-x-auto px-4 pt-4">
+        {userPets.map((p) => (
+          <button
+            key={p.id} onClick={() => setActivePet(p.id)}
+            className={cx(
+              "flex shrink-0 items-center gap-2 rounded-full border py-1.5 pl-1.5 pr-3.5 text-[13px] font-bold transition-all",
+              p.id === pet?.id
+                ? "border-accent bg-accent-soft text-ink shadow-sm"
+                : "border-line bg-surface/60 text-mute hover:border-mute hover:text-ink",
+            )}
+          >
+            {p.img
+              ? <img src={p.img} alt="" className="h-7 w-7 rounded-full object-cover" />
+              : <PetFace species={p.species} color={p.color} size={26} />}
+            {p.name}
+            {p.id === pet?.id && <Icon name="check" size={13} className="text-accent" />}
+          </button>
+        ))}
+        <button
+          onClick={() => setAddPet(true)}
+          className="flex shrink-0 items-center gap-1.5 rounded-full border border-dashed border-line py-2 pl-3 pr-3.5 text-[13px] font-bold text-mute transition-all hover:border-accent hover:text-accent"
+        >
+          <Icon name="plus" size={15} />добавить питомца
+        </button>
+      </div>
+
       {/* ---- Каркас ---- */}
       <div className="relative z-10 mx-auto grid max-w-6xl gap-6 px-4 pt-6 lg:grid-cols-[200px_1fr]">
         {/* сайдбар (desktop) */}
@@ -281,6 +304,21 @@ function Shell() {
           ))}
         </div>
       </nav>
+
+      {/* ---- Добавление питомца ---- */}
+      <Modal open={addPet} onClose={() => setAddPet(false)} title="Новый питомец">
+        <div className="p-6">
+          <p className="mb-4 text-[13px] leading-relaxed text-mute">
+            У каждого питомца — свой журнал, свои активности и лапки, своя дуэль хозяев.
+          </p>
+          <PetForm
+            onSubmit={(d) => { createPet(d); setAddPet(false); }}
+            onCancel={() => setAddPet(false)}
+            submitLabel="Добавить в стаю"
+            autoFocus={false}
+          />
+        </div>
+      </Modal>
 
       {/* ---- Тосты ---- */}
       <div className="fixed right-4 top-20 z-[80] flex w-[min(92vw,340px)] flex-col gap-2">

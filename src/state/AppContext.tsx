@@ -2,13 +2,13 @@ import {
   createContext, ReactNode, useCallback, useContext, useEffect, useMemo, useRef, useState,
 } from "react";
 import type {
-  ActivityDef, DB, IconName, LogEntry, Pet, Species, ThemeId, User,
+  ActivityDef, ChatMessage, DB, IconName, LogEntry, Pet, Species, ThemeId, User,
 } from "../lib/types";
 import { LEVELS, genInvite, levelFor, uid } from "../lib/types";
 import {
-  computeDue, ensureDemo, limitsFor, loadDB, loadNotif, loadSession, loadTheme,
+  computeDue, ensureDemo, limitsFor, loadActivePet, loadDB, loadNotif, loadSession, loadTheme,
   loginUser, makeGuest, makePetWithActs, pawsOf, registerUser,
-  saveDB, saveNotif, saveSession, saveTheme,
+  saveActivePet, saveDB, saveNotif, saveSession, saveTheme,
 } from "../lib/db";
 
 export interface Toast { id: string; text: string; kind: "ok" | "warn" | "err" | "paw" }
@@ -22,8 +22,11 @@ interface Ctx {
   db: DB;
   user: User | null;
   pet: Pet | null;
+  userPets: Pet[];
+  setActivePet: (id: string) => void;
   acts: ActivityDef[];
   logs: LogEntry[];
+  chat: ChatMessage[];
   owners: User[];
   theme: ThemeId;
   toasts: Toast[];
@@ -36,7 +39,8 @@ interface Ctx {
   logout: () => void;
   updateProfile: (patch: Partial<Pick<User, "name" | "color" | "img">>) => void;
   createPet: (data: { name: string; species: Species; breed: string; birthday: string; color: string; img?: string }) => void;
-  complete: (actId: string) => void;
+  complete: (actId: string, img?: string) => void;
+  sendMessage: (text: string) => void;
   addAct: (input: NewActInput) => string | null;
   updateAct: (id: string, patch: Partial<ActivityDef>) => void;
   deleteAct: (id: string) => void;
@@ -57,6 +61,7 @@ const AppCtx = createContext<Ctx | null>(null);
 export function AppProvider({ children }: { children: ReactNode }) {
   const [db, setDb] = useState<DB>(() => loadDB());
   const [userId, setUserId] = useState<string | null>(() => loadSession());
+  const [activePetId, setActivePetId] = useState<string | null>(() => loadActivePet());
   const [theme, setThemeState] = useState<ThemeId>(() => loadTheme());
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [now, setNow] = useState(() => Date.now());
@@ -91,9 +96,18 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   /* ---------- производные ---------- */
   const user = useMemo(() => db.users.find((u) => u.id === userId) ?? null, [db, userId]);
-  const pet = useMemo(
-    () => (user ? db.pets.find((p) => p.ownerIds.includes(user.id)) ?? null : null),
+  const userPets = useMemo(
+    () => (user ? db.pets.filter((p) => p.ownerIds.includes(user.id)) : []),
     [db, user],
+  );
+  const pet = useMemo(
+    () => userPets.find((p) => p.id === activePetId) ?? userPets[0] ?? null,
+    [userPets, activePetId],
+  );
+  const setActivePet = (id: string) => { setActivePetId(id); saveActivePet(id); };
+  const chat = useMemo(
+    () => (pet ? db.chat.filter((m) => m.petId === pet.id).sort((a, b) => a.at - b.at) : []),
+    [db, pet],
   );
   const acts = useMemo(() => (pet ? db.acts.filter((a) => a.petId === pet.id) : []), [db, pet]);
   const logs = useMemo(() => (pet ? db.logs.filter((l) => l.petId === pet.id) : []), [db, pet]);
@@ -190,9 +204,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
     d.pets.push(p);
     d.acts.push(...makePetWithActs(p).acts);
     commit(d);
+    setActivePet(p.id);
+    if (userPets.length > 0) toast(`${p.name} теперь в вашей стае`);
   };
 
-  const complete = (actId: string) => {
+  const complete = (actId: string, img?: string) => {
     if (!user || !pet) return;
     const act = acts.find((a) => a.id === actId);
     if (!act) return;
@@ -201,7 +217,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (st.blocked) { toast(st.blocked, "err"); return; }
     const before = pawsOf(acts, logs);
     const d = structuredClone(db);
-    d.logs.push({ id: uid(), petId: pet.id, actId, ownerId: user.id, at: t });
+    d.logs.push({ id: uid(), petId: pet.id, actId, ownerId: user.id, at: t, ...(img ? { img } : {}) });
     commit(d);
     toast(`+${act.paws} лапок: «${act.title}»`, "paw");
     if (levelFor(before + act.paws).idx > levelFor(before).idx) {
@@ -258,13 +274,21 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const p = db.pets.find((x) => x.invite.toUpperCase() === c);
     if (!p) return "Код не найден — проверьте приглашение";
     if (p.ownerIds.includes(user.id)) return "Вы уже хозяин этого питомца";
-    if (db.pets.some((x) => x.ownerIds.includes(user.id)))
-      return "У вас уже есть питомец. Код вводится с аккаунта без питомца";
     const d = structuredClone(db);
     d.pets.find((x) => x.id === p.id)!.ownerIds.push(user.id);
     commit(d);
+    setActivePet(p.id);
     toast(`Теперь вы вместе ухаживаете за ${p.name}`);
     return null;
+  };
+
+  const sendMessage = (text: string) => {
+    if (!user || !pet) return;
+    const t = text.trim();
+    if (!t) return;
+    const d = structuredClone(db);
+    d.chat.push({ id: uid(), petId: pet.id, authorId: user.id, text: t.slice(0, 500), at: Date.now() });
+    commit(d);
   };
 
   const removeOwner = (ownerId: string) => {
@@ -306,6 +330,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const resetAll = () => {
     ["lapometr.db.v1", "lapometr.notif.v1"].forEach((k) => localStorage.removeItem(k));
     sessionStorage.removeItem("lapometr.session.v1");
+    sessionStorage.removeItem("lapometr.activepet.v1");
     location.reload();
   };
 
@@ -328,6 +353,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     register, login, loginDemo, guest, logout, updateProfile, createPet, complete,
     addAct, updateAct, deleteAct, regenInvite, joinPet, removeOwner,
     setTheme, toast, dismissToast, toggleNotif, exportData, resetAll, replaceDb,
+    userPets, setActivePet, chat, sendMessage,
   };
 
   return <AppCtx.Provider value={value}>{children}</AppCtx.Provider>;

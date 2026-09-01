@@ -113,6 +113,28 @@ export function buildDemoDB(): DB {
   add("bath", "u_max", 15, 13, 0);
   add("pill", "u_ali", 26, 10, 0);
   add("shot", "u_max", 29, 15, 30);
+
+  /* второй питомец — чтобы переключатель был виден сразу */
+  const pet2: Pet = {
+    id: "pet_kesha", name: "Кеша", species: "parrot",
+    breed: "Корелла", birthday: "2023-03-02",
+    color: "#7fa8e0", ownerIds: ["u_max"], invite: "KESHA-07", createdAt: now - 20 * DAY,
+  };
+  const keep2 = ["feed", "water", "pet", "play", "bath", "nails"];
+  const acts2 = defaultActs(pet2.id).filter((a) => keep2.includes(a.id.replace(`${pet2.id}_`, "")));
+  const add2 = (slug: string, dayOffset: number, hour: number, min: number) => {
+    const at = sod(now - dayOffset * DAY) + hour * 3600e3 + min * 60e3;
+    if (at <= now) logs.push({ id: uid(), petId: pet2.id, actId: `${pet2.id}_${slug}`, ownerId: "u_max", at });
+  };
+  for (let d = 11; d >= 0; d--) {
+    if (rnd() > 0.10) add2("feed", d, 9, 10);
+    if (rnd() > 0.20) add2("feed", d, 17, 40);
+    if (rnd() > 0.25) add2("water", d, 10, 5);
+    if (rnd() > 0.30) add2("pet", d, 20, 15);
+    if (d % 4 === 1) add2("play", d, 18, 0);
+  }
+  add2("bath", 6, 12, 20);
+
   logs.sort((a, b) => a.at - b.at);
-  return { v: 1, users: [u1, u2], pets: [pet], acts, logs };
+  return { v: 1, users: [u1, u2], pets: [pet, pet2], acts: [...acts, ...acts2], logs, chat: [] };
 }

@@ -1,6 +1,6 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useApp } from "../state/AppContext";
-import { Bar, Btn, CountUp, Reveal, Seg, UserAvatar, cx } from "../components/ui";
+import { Bar, Btn, CountUp, Reveal, Seg, UserAvatar, cx, inputCls } from "../components/ui";
 import { Icon } from "../components/icons";
 import {
   DAY, agoText, fmtNum, pawsOf, plural, startOfDay, startOfMonth, startOfWeek, streakDays,
@@ -200,9 +200,89 @@ export function DuelScreen({ onCopy }: { onCopy: (code: string) => void }) {
               <p className="mt-4 text-[12px] text-mute">Лапки по дням — кто не даёт шкале остывать</p>
             </section>
           </Reveal>
+
+          {/* перепалка хозяев */}
+          <Reveal delay={160}>
+            <OwnerChat />
+          </Reveal>
         </>
       )}
     </div>
+  );
+}
+
+function OwnerChat() {
+  const { chat, owners, user, sendMessage, pet, now } = useApp();
+  const [text, setText] = useState("");
+  const boxRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (boxRef.current) boxRef.current.scrollTop = boxRef.current.scrollHeight;
+  }, [chat.length]);
+
+  if (!pet || !user) return null;
+
+  const send = () => {
+    if (!text.trim()) return;
+    sendMessage(text);
+    setText("");
+  };
+
+  return (
+    <section className="card p-6">
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+        <h3 className="flex items-center gap-2 font-display text-[16px] font-bold">
+          <Icon name="heart" size={18} className="text-accent" />Перепалка хозяев
+        </h3>
+        <span className="text-[12px] font-semibold text-mute">видят только хозяева {pet.name}</span>
+      </div>
+
+      <div ref={boxRef} className="h-72 space-y-2.5 overflow-y-auto rounded-xl border border-line bg-bg2/50 p-3.5">
+        {chat.length === 0 ? (
+          <div className="grid h-full place-items-center text-center">
+            <p className="max-w-[280px] text-[13px] leading-relaxed text-mute">
+              Пока тихо. Напишите сопернику что-нибудь — например, что сегодня
+              первым покормили {pet.name}.
+            </p>
+          </div>
+        ) : (
+          chat.map((m) => {
+            const mine = m.authorId === user.id;
+            const author = owners.find((o) => o.id === m.authorId);
+            return (
+              <div key={m.id} className={cx("anim-fadeup flex flex-col", mine ? "items-end" : "items-start")}>
+                <div
+                  className={cx(
+                    "max-w-[82%] whitespace-pre-wrap rounded-2xl px-3.5 py-2 text-[13.5px] leading-relaxed",
+                    mine ? "rounded-br-md bg-accent text-accent-ink" : "rounded-bl-md bg-raise",
+                  )}
+                >
+                  {m.text}
+                </div>
+                <p className={cx("mt-1 flex items-center gap-1.5 px-1 text-[11px] font-semibold text-mute", mine && "flex-row-reverse")}>
+                  <span style={{ color: author?.color }}>{mine ? "вы" : author?.name ?? "—"}</span>
+                  · {agoText(m.at, now)}
+                </p>
+              </div>
+            );
+          })
+        )}
+      </div>
+
+      <div className="mt-3.5 flex gap-2.5">
+        <input
+          className={cx(inputCls, "flex-1")}
+          value={text}
+          maxLength={500}
+          placeholder={`Сообщение другим хозяевам ${pet.name}…`}
+          onChange={(e) => setText(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } }}
+        />
+        <Btn onClick={send} disabled={!text.trim()}>
+          <Icon name="paw" size={16} />Отправить
+        </Btn>
+      </div>
+    </section>
   );
 }
 
