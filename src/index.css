@@ -1,0 +1,143 @@
+@import "tailwindcss";
+
+/* ============ Тема как набор токенов ============ */
+@theme inline {
+  --color-bg: var(--bg);
+  --color-bg2: var(--bg2);
+  --color-surface: var(--surface);
+  --color-raise: var(--surface2);
+  --color-line: var(--line);
+  --color-ink: var(--ink);
+  --color-mute: var(--muted);
+  --color-accent: var(--accent);
+  --color-accent-ink: var(--accent-ink);
+  --color-sage: var(--sage);
+  --color-rose: var(--rose);
+  --color-ok: var(--ok);
+  --color-warn: var(--warn);
+  --color-danger: var(--danger);
+  --font-display: "Unbounded", "Golos Text", sans-serif;
+  --font-body: "Golos Text", "Segoe UI", sans-serif;
+}
+
+/* --- night: тёплый эспрессо + мёд (основная) --- */
+:root[data-theme="night"] {
+  color-scheme: dark;
+  --bg: #211a14; --bg2: #281f17; --surface: #2c231a; --surface2: #372c20;
+  --line: #463826; --ink: #f5ecdc; --muted: #b1a087;
+  --accent: #f2b45a; --accent-ink: #2a1d08;
+  --sage: #a3c293; --rose: #e8a0ac; --ok: #97c483; --warn: #e6c069; --danger: #e57e5e;
+  --accent-soft: rgba(242, 180, 90, 0.14);
+  --glow1: rgba(242, 180, 90, 0.11); --glow2: rgba(163, 194, 147, 0.08);
+  --pawmark: rgba(245, 236, 220, 0.045);
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 12px 32px rgba(0, 0, 0, 0.35);
+}
+/* --- day: тёплая бумага --- */
+:root[data-theme="day"] {
+  color-scheme: light;
+  --bg: #f4f0e7; --bg2: #eee8da; --surface: #fdfbf5; --surface2: #efe8d9;
+  --line: #ddd2bc; --ink: #2c241a; --muted: #8b7c64;
+  --accent: #d98a2b; --accent-ink: #fff7e8;
+  --sage: #6f9a5d; --rose: #cf7688; --ok: #5e9450; --warn: #bd8f2f; --danger: #cd5f44;
+  --accent-soft: rgba(217, 138, 43, 0.13);
+  --glow1: rgba(217, 138, 43, 0.12); --glow2: rgba(111, 154, 93, 0.1);
+  --pawmark: rgba(44, 36, 26, 0.05);
+  --shadow: 0 1px 2px rgba(60, 45, 20, 0.06), 0 10px 28px rgba(60, 45, 20, 0.08);
+}
+/* --- latte: светло-коричневая --- */
+:root[data-theme="latte"] {
+  color-scheme: light;
+  --bg: #e9d8bf; --bg2: #e2cfae; --surface: #f7edda; --surface2: #ecdcbe;
+  --line: #d5bd97; --ink: #43301d; --muted: #93794f;
+  --accent: #b06a28; --accent-ink: #fdf3df;
+  --sage: #7d8f57; --rose: #c4766b; --ok: #6d8f4e; --warn: #a97f24; --danger: #c05a3e;
+  --accent-soft: rgba(176, 106, 40, 0.14);
+  --glow1: rgba(176, 106, 40, 0.13); --glow2: rgba(125, 143, 87, 0.12);
+  --pawmark: rgba(67, 48, 29, 0.055);
+  --shadow: 0 1px 2px rgba(70, 45, 15, 0.08), 0 10px 28px rgba(70, 45, 15, 0.1);
+}
+/* --- forest: зелёная --- */
+:root[data-theme="forest"] {
+  color-scheme: light;
+  --bg: #e7eedd; --bg2: #dfe8d1; --surface: #f8fbf1; --surface2: #e3ecd4;
+  --line: #c6d5b1; --ink: #26331f; --muted: #71835f;
+  --accent: #4f8a3d; --accent-ink: #f1f8e9;
+  --sage: #7fae66; --rose: #c97f8e; --ok: #4f8a3d; --warn: #b98d2f; --danger: #c25b45;
+  --accent-soft: rgba(79, 138, 61, 0.13);
+  --glow1: rgba(79, 138, 61, 0.12); --glow2: rgba(201, 127, 142, 0.08);
+  --pawmark: rgba(38, 51, 31, 0.05);
+  --shadow: 0 1px 2px rgba(30, 50, 20, 0.06), 0 10px 28px rgba(30, 50, 20, 0.09);
+}
+/* --- olive: тёмная олива --- */
+:root[data-theme="olive"] {
+  color-scheme: dark;
+  --bg: #2b2d20; --bg2: #31331f; --surface: #343726; --surface2: #3f4230;
+  --line: #4f523c; --ink: #eef0d9; --muted: #aaae8e;
+  --accent: #cdd671; --accent-ink: #262a12;
+  --sage: #9fc28d; --rose: #dfa597; --ok: #a4c98c; --warn: #d9b659; --danger: #d97a5c;
+  --accent-soft: rgba(205, 214, 113, 0.14);
+  --glow1: rgba(205, 214, 113, 0.1); --glow2: rgba(223, 165, 151, 0.07);
+  --pawmark: rgba(238, 240, 217, 0.045);
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 12px 32px rgba(0, 0, 0, 0.32);
+}
+
+/* ============ База ============ */
+html, body, #root { min-height: 100%; }
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-body);
+  font-feature-settings: "ss01";
+  -webkit-font-smoothing: antialiased;
+  transition: background-color 0.4s ease, color 0.4s ease;
+}
+::selection { background: var(--accent); color: var(--accent-ink); }
+* { scrollbar-width: thin; scrollbar-color: var(--line) transparent; }
+*::-webkit-scrollbar { width: 8px; height: 8px; }
+*::-webkit-scrollbar-thumb { background: var(--line); border-radius: 8px; }
+input[type="date"] { color-scheme: inherit; }
+
+/* ============ Компонентные классы ============ */
+.card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  box-shadow: var(--shadow);
+}
+.card-i { transition: transform 0.25s ease, border-color 0.25s ease, box-shadow 0.25s ease; }
+.card-i:hover { transform: translateY(-2px); border-color: color-mix(in oklab, var(--accent) 45%, var(--line)); }
+.bg-accent-soft { background: var(--accent-soft); }
+.font-display { font-family: var(--font-display); }
+
+/* ============ Анимации ============ */
+@keyframes fadein { from { opacity: 0; } to { opacity: 1; } }
+@keyframes fadeup { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: none; } }
+@keyframes pop { 0% { opacity: 0; transform: scale(0.92) translateY(8px); } 100% { opacity: 1; transform: none; } }
+@keyframes slidein { from { opacity: 0; transform: translateX(24px); } to { opacity: 1; transform: none; } }
+@keyframes breathe { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.04); } }
+@keyframes floaty { 0%, 100% { transform: translateY(0) rotate(-2deg); } 50% { transform: translateY(-9px) rotate(2deg); } }
+@keyframes wiggle { 0%, 100% { transform: translateX(0); } 25% { transform: translateX(-5px); } 75% { transform: translateX(5px); } }
+@keyframes pulse-dot { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.55; transform: scale(0.8); } }
+@keyframes growx { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+@keyframes growy { from { transform: scaleY(0); } to { transform: scaleY(1); } }
+@keyframes pawfly {
+  0% { opacity: 1; transform: translate(-50%, -50%) scale(0.3) rotate(0deg); }
+  100% { opacity: 0; transform: translate(calc(-50% + var(--dx)), calc(-50% + var(--dy))) scale(var(--s)) rotate(var(--r)); }
+}
+.anim-fade { animation: fadein 0.25s ease both; }
+.anim-fadeup { animation: fadeup 0.55s cubic-bezier(0.2, 0.7, 0.3, 1) both; }
+.anim-pop { animation: pop 0.35s cubic-bezier(0.34, 1.56, 0.64, 1) both; }
+.anim-slide { animation: slidein 0.32s cubic-bezier(0.2, 0.7, 0.3, 1) both; }
+.anim-wiggle { animation: wiggle 0.3s ease-in-out 2; }
+.breathe { animation: breathe 4.5s ease-in-out infinite; }
+.floaty { animation: floaty 5.5s ease-in-out infinite; }
+.paw-fly { position: absolute; left: 50%; top: 50%; color: var(--accent); animation: pawfly 0.85s cubic-bezier(0.2, 0.6, 0.3, 1) forwards; pointer-events: none; }
+
+/* Появление при скролле */
+.reveal { opacity: 0; transform: translateY(18px); transition: opacity 0.6s ease, transform 0.6s cubic-bezier(0.2, 0.7, 0.3, 1); }
+.reveal.on { opacity: 1; transform: none; }
+
+/* Линия таймлайна */
+.tl-line {
+  background: linear-gradient(180deg, color-mix(in oklab, var(--accent) 55%, var(--line)), var(--line) 70%, transparent);
+}
