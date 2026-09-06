@@ -19,6 +19,8 @@ export interface User {
   createdAt: number;
   demo?: boolean;
   guest?: boolean;
+  /** auth.uid() в Supabase — связка локального аккаунта с облачным */
+  cloudId?: string;
 }
 
 export interface Pet {

@@ -75,7 +75,11 @@
 - [x] 9.4d Единый тик напоминаний: браузерные уведомления + Telegram для активностей и вет-событий
 
 ## Фаза 10 — Настоящее облако
-- [ ] 10.1 Realtime-синхронизация журнала и чата между устройствами (Supabase Realtime: `logs`, `chat_messages`, события)
+- [x] 10.1 Realtime-синхронизация журнала и чата между устройствами (Supabase Realtime: `logs`, `chat_messages`, события):
+  - [x] миграция `003_realtime.sql`: text-иды без FK, `cloud_access` (RLS-участие), `vet_events`, `mirror_upsert_logs()` (история в обход анти-чита), `claim_invite(text)`, подключение к публикации `supabase_realtime`
+  - [x] `lib/cloud.ts`: `cloudFullPush` (зеркало pets/acts/access/logs/chat/events + снапшот), `cloudSendDiff` (живая досылка на каждый commit), `cloudClaimInvite` + `cloudFetchPetBundle` (вход по коду между устройствами), `cloudFetchDisplays`, `subscribeRealtime`
+  - [x] `AppContext`: облачная сессия и `cloudId`, подписка с дедупликацией по id, «тени» удалённых хозяев (имя/цвет из `cloud_access`, автодобавление в `ownerIds`), тост «прилетело в журнал», статус `rtStatus`
+  - [x] Настройки: Realtime-индикатор (онлайн/подключение/офлайн), «Отправить в облако» = полное зеркало со счётчиками, код приглашения работает между устройствами
 - [ ] 10.2 Фото в Supabase Storage вместо base64: загрузка при отметке, ссылка в `logs.img`, чистка при удалении
 - [ ] 10.3 Построчная синхронизация `pets`/`pet_owners`/`activity_defs`/`logs`/`chat` поверх снапшотов (снапшот — резервная копия)
 - [ ] 10.4 Гигиена снапшотов: вырезать `pass`/e-mail и чувствительные поля перед push

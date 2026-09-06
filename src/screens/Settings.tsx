@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useApp } from "../state/AppContext";
 import {
-  clearCloudConfig, cloudCurrentUser, cloudPull, cloudPush, cloudSignIn,
+  clearCloudConfig, cloudCurrentUser, cloudFullPush, cloudPull, cloudSignIn,
   cloudSignInGoogle, cloudSignOut, cloudSignUp, lastSyncAt, loadCloudConfig,
   onCloudAuthChange, saveCloudConfig, testConnection,
   type CloudSnapshot, type CloudUser,
@@ -43,6 +43,7 @@ export function SettingsScreen({ onCopy }: { onCopy: (code: string) => void }) {
   const [img, setImg] = useState<string | undefined>(user?.img);
   const [joinCode, setJoinCode] = useState("");
   const [joinErr, setJoinErr] = useState<string | null>(null);
+  const [joinBusy, setJoinBusy] = useState(false);
   const [edit, setEdit] = useState<ActivityDef | "new" | null>(null);
   const [delAsk, setDelAsk] = useState<string | null>(null);
   const [resetAsk, setResetAsk] = useState(false);
@@ -50,8 +51,11 @@ export function SettingsScreen({ onCopy }: { onCopy: (code: string) => void }) {
 
   if (!user) return null;
 
-  const tryJoin = () => {
-    const r = joinPet(joinCode);
+  const tryJoin = async () => {
+    setJoinBusy(true);
+    setJoinErr(null);
+    const r = await joinPet(joinCode);
+    setJoinBusy(false);
     setJoinErr(r);
     if (!r) setJoinCode("");
   };
@@ -154,10 +158,12 @@ export function SettingsScreen({ onCopy }: { onCopy: (code: string) => void }) {
             )}
 
             <div className="mt-4">
-              <Field label="Ввести код приглашения (для аккаунта без питомца)">
+              <Field label="Ввести код приглашения" hint="С подключённым облаком код работает между устройствами: питомец скачается вместе с журналом">
                 <div className="flex gap-2">
-                  <input className={cx(inputCls, "flex-1")} value={joinCode} onChange={(e) => { setJoinCode(e.target.value); setJoinErr(null); }} placeholder="PAW-XXXX" />
-                  <Btn onClick={tryJoin} disabled={!joinCode.trim()}>Войти в стаю</Btn>
+                  <input className={cx(inputCls, "flex-1")} value={joinCode} onChange={(e) => { setJoinCode(e.target.value); setJoinErr(null); }} placeholder="BULKA-42" />
+                  <Btn onClick={() => void tryJoin()} disabled={!joinCode.trim() || joinBusy}>
+                    {joinBusy ? "Подключаем…" : "Войти в стаю"}
+                  </Btn>
                 </div>
               </Field>
               {joinErr && <p className="anim-fade mt-2 text-[12.5px] font-medium text-danger">{joinErr}</p>}
@@ -507,7 +513,7 @@ function GoogleG() {
 }
 
 function CloudPanel() {
-  const { db, replaceDb, toast, user } = useApp();
+  const { db, replaceDb, toast, user, rtStatus } = useApp();
   const [cfg, setCfg] = useState(() => loadCloudConfig());
   const [cloudUser, setCloudUser] = useState<CloudUser | null>(null);
   const [url, setUrl] = useState(cfg?.url ?? "");
@@ -564,12 +570,14 @@ function CloudPanel() {
   };
 
   const doPush = async () => {
+    if (!user) return;
     setBusy("push"); setErr(null);
-    const r = await cloudPush(db);
+    const r = await cloudFullPush(db, user.id);
     setBusy(null);
     if (!r.ok) { setErr(r.error); return; }
-    setLastSync(r.data?.at ?? Date.now());
-    toast("Отправлено в облако", "ok");
+    setLastSync(Date.now());
+    const s = r.data;
+    toast(`Зеркало обновлено: ${s?.logs ?? 0} записей, ${s?.events ?? 0} событий`, "ok");
   };
 
   const doPull = async () => {
@@ -675,6 +683,21 @@ function CloudPanel() {
                   <p className="text-[12px] font-bold uppercase tracking-wider text-mute">Синхронизация</p>
                   <p className="mt-1 text-[12.5px] text-mute">
                     {lastSync ? `Последний обмен: ${fmt(lastSync)}` : "Ещё не синхронизировали"}
+                  </p>
+                  <p className="mt-1.5 flex items-center gap-1.5 text-[12px] font-semibold">
+                    <span
+                      className={cx(
+                        "h-1.5 w-1.5 rounded-full",
+                        rtStatus === "live" ? "bg-ok animate-[pulse-dot_2s_ease-in-out_infinite]"
+                          : rtStatus === "connecting" ? "bg-warn animate-[pulse-dot_1s_ease-in-out_infinite]"
+                          : "bg-mute",
+                      )}
+                    />
+                    <span className={rtStatus === "live" ? "text-ok" : rtStatus === "connecting" ? "text-warn" : "text-mute"}>
+                      Realtime: {rtStatus === "live" ? "онлайн — записи прилетают мгновенно"
+                        : rtStatus === "connecting" ? "подключаемся…"
+                        : cloudUser ? "офлайн — проверьте миграцию 003" : "офлайн — нужен вход в облако"}
+                    </span>
                   </p>
                   <div className="mt-3 flex flex-wrap gap-2">
                     <Btn size="sm" onClick={doPush} disabled={busy === "push" || !cloudUser}>
