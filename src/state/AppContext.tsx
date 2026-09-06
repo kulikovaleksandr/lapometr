@@ -15,8 +15,9 @@ import {
 import { markSent, tgSend, wasSent } from "../lib/telegram";
 import {
   cloudClaimInvite, cloudCurrentUser, cloudDeletePhotoUrls, cloudFetchDisplays,
-  cloudFetchPetBundle, cloudSendDiff, cloudTouchAccess, cloudUploadPhoto,
-  cloudUpsertLogRow, isStorageUrl, loadCloudConfig, onCloudAuthChange,
+  cloudFetchPetBundle, cloudRowFetch, cloudSendDiff, cloudTouchAccess,
+  cloudUploadPhoto, cloudUpsertLogRow, isStorageUrl, loadCloudConfig,
+  mergeRemoteRows, onCloudAuthChange,
   subscribeRealtime, type CloudUser, type PetBundle, type RtPayload, type RtStatus,
 } from "../lib/cloud";
 
@@ -76,6 +77,8 @@ interface Ctx {
   exportData: () => void;
   resetAll: () => void;
   replaceDb: (next: DB) => void;
+  /** Построчная синхронизация из облака: долить недостающие строки */
+  syncFromCloud: () => Promise<string | null>;
 }
 
 const AppCtx = createContext<Ctx | null>(null);
@@ -547,11 +550,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (!me) return "Нужна учётная запись";
     const d = structuredClone(dbRef.current);
 
-    /* «тени» облачных хозяев: имя и цвет берём из cloud_access */
+    /* «тени» облачных хозяев: участники из pet_owners/cloud_access
+       (+ страховочный вывод из журнала и чата для старых проектов) */
     const foreignIds = [...new Set([
+      ...(b.memberIds ?? []),
       ...b.logs.map((l) => l.ownerId),
       ...b.chat.map((m) => m.authorId),
-    ])].filter((id) => !d.users.some((u) => u.id === id || u.cloudId === id));
+    ])].filter((id) => id !== me.cloudId && !d.users.some((u) => u.id === id || u.cloudId === id));
     const disp = foreignIds.length ? await cloudFetchDisplays(foreignIds) : {};
     const ownerMap = new Map<string, string>();
     for (const cid of foreignIds) {
@@ -591,10 +596,44 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
     const pp = d.pets.find((x) => x.id === petId)!;
     foreignOwners.forEach((oid) => { if (!pp.ownerIds.includes(oid)) pp.ownerIds.push(oid); });
+    /* все участники (из pet_owners/cloud_access) тоже становятся хозяевами */
+    for (const cid of b.memberIds ?? []) {
+      const oid = cid === me.cloudId ? me.id : localOf(cid);
+      if (!pp.ownerIds.includes(oid)) pp.ownerIds.push(oid);
+    }
 
     commit(d, { fromCloud: true });
     setActivePet(petId);
     toast(`${pet.name} теперь с вами — журнал синхронизируется в реальном времени`);
+    return null;
+  };
+
+  /**
+   * Построчная синхронизация из облака: скачиваем все строки по своим питомцам
+   * и аккуратно доливаем недостающее (снапшот при этом остаётся резервной копией).
+   */
+  const syncFromCloud = async (): Promise<string | null> => {
+    if (!user) return "Нужна учётная запись";
+    if (!user.cloudId) return "Локальный профиль не связан с облачным аккаунтом";
+    const res = await cloudRowFetch(user.cloudId);
+    if (!res.ok) return res.error;
+    const remote = res.data;
+    if (!remote) return "Не удалось прочитать данные из облака";
+    const { db: merged, stats } = mergeRemoteRows(dbRef.current, remote, user.id, user.cloudId);
+    const added = stats.pets + stats.acts + stats.logs + stats.chat + stats.events + stats.owners;
+    commit(merged, { fromCloud: true });
+    if (added === 0) {
+      toast("Всё актуально — новых строк в облаке нет");
+    } else {
+      const parts: string[] = [];
+      if (stats.logs) parts.push(`${stats.logs} записей`);
+      if (stats.chat) parts.push(`${stats.chat} сообщений`);
+      if (stats.events) parts.push(`${stats.events} событий`);
+      if (stats.acts) parts.push(`${stats.acts} активностей`);
+      if (stats.pets) parts.push(`${stats.pets} питомцев`);
+      if (stats.owners) parts.push(`${stats.owners} хозяев`);
+      toast(`Из облака добавлено: ${parts.join(", ")}`);
+    }
     return null;
   };
 
@@ -720,7 +759,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setTheme, toast, dismissToast, toggleNotif, exportData, resetAll, replaceDb,
     userPets, setActivePet, chat, sendMessage,
     events, tg, setTg, addEvent, updateEvent, deleteEvent,
-    cloudUser, rtStatus,
+    cloudUser, rtStatus, syncFromCloud,
   };
 
   return <AppCtx.Provider value={value}>{children}</AppCtx.Provider>;

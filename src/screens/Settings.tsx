@@ -513,7 +513,7 @@ function GoogleG() {
 }
 
 function CloudPanel() {
-  const { db, replaceDb, toast, user, rtStatus } = useApp();
+  const { db, replaceDb, toast, user, rtStatus, syncFromCloud } = useApp();
   const [cfg, setCfg] = useState(() => loadCloudConfig());
   const [cloudUser, setCloudUser] = useState<CloudUser | null>(null);
   const [url, setUrl] = useState(cfg?.url ?? "");
@@ -586,6 +586,14 @@ function CloudPanel() {
     setLastSync(Date.now());
     const s = r.data;
     toast(`Зеркало обновлено: ${s?.logs ?? 0} записей, ${s?.events ?? 0} событий`, "ok");
+  };
+
+  const doSync = async () => {
+    setBusy("sync"); setErr(null);
+    const e = await syncFromCloud();
+    setBusy(null);
+    if (e) setErr(e);
+    else setLastSync(Date.now());
   };
 
   const doPull = async () => {
@@ -727,13 +735,20 @@ function CloudPanel() {
                       <Icon name={busy === "push" ? "clock" : "upload"} size={15} />
                       {busy === "push" ? "Отправляем…" : "Отправить в облако"}
                     </Btn>
-                    <Btn size="sm" variant="soft" onClick={doPull} disabled={busy === "pull" || !cloudUser}>
+                    <Btn size="sm" variant="soft" onClick={doSync} disabled={busy === "sync" || !cloudUser}
+                      title="Построчно скачать питомцев, активности, журнал, чат и события, долить недостающее">
+                      <Icon name={busy === "sync" ? "clock" : "repeat"} size={15} />
+                      {busy === "sync" ? "Синхронизируем…" : "Синхронизировать"}
+                    </Btn>
+                    <Btn size="sm" variant="ghost" onClick={doPull} disabled={busy === "pull" || !cloudUser}
+                      title="Восстановить локальные данные из резервного снапшота">
                       <Icon name={busy === "pull" ? "clock" : "download"} size={15} />
-                      {busy === "pull" ? "Получаем…" : "Загрузить из облака"}
+                      {busy === "pull" ? "Получаем…" : "Снапшот…"}
                     </Btn>
                   </div>
                   <p className="mt-2.5 text-[11.5px] leading-relaxed text-mute">
-                    «Загрузить» предложит заменить локальные данные снапшотом — ничего не теряется без подтверждения.
+                    Основная синхронизация — построчная: журнал, чат и активности сливаются по id,
+                    ничего не затирая. Снапшот — резервная копия на случай полной потери данных.
                   </p>
                 </div>
 

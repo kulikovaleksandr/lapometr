@@ -80,8 +80,11 @@
   - [x] `lib/cloud.ts`: `cloudFullPush` (зеркало pets/acts/access/logs/chat/events + снапшот), `cloudSendDiff` (живая досылка на каждый commit), `cloudClaimInvite` + `cloudFetchPetBundle` (вход по коду между устройствами), `cloudFetchDisplays`, `subscribeRealtime`
   - [x] `AppContext`: облачная сессия и `cloudId`, подписка с дедупликацией по id, «тени» удалённых хозяев (имя/цвет из `cloud_access`, автодобавление в `ownerIds`), тост «прилетело в журнал», статус `rtStatus`
   - [x] Настройки: Realtime-индикатор (онлайн/подключение/офлайн), «Отправить в облако» = полное зеркало со счётчиками, код приглашения работает между устройствами
-- [ ] 10.2 Фото в Supabase Storage вместо base64: загрузка при отметке, ссылка в `logs.img`, чистка при удалении
-- [ ] 10.3 Построчная синхронизация `pets`/`pet_owners`/`activity_defs`/`logs`/`chat` поверх снапшотов (снапшот — резервная копия)
+- [x] 10.2 Фото в Supabase Storage вместо base64: загрузка при отметке, ссылка в `logs.img`, чистка при удалении (миграция `004_storage.sql`, бакет `pet-photos`, `cloudUploadPhoto`/`cloudDeletePhotoUrls`)
+- [x] 10.3 Построчная синхронизация `pets`/`pet_owners`/`activity_defs`/`logs`/`chat` поверх снапшотов (снапшот — резервная копия):
+  - [x] `lib/cloud.ts`: `cloudRowFetch` (все строки по своим питомцам, постранично), `mergeRemoteRows` (слияние по id, идемпотентно), мапперы `rowTo*`, `paged()`
+  - [x] зеркало `pet_owners` в `cloudFullPush`; участники (`memberIds`) в `PetBundle`
+  - [x] `AppContext.syncFromCloud` + «тени» удалённых хозяев; кнопка «Синхронизировать», снапшот — резерв («Снапшот…»)
 - [ ] 10.4 Гигиена снапшотов: вырезать `pass`/e-mail и чувствительные поля перед push
 - [ ] 10.5 Разрешение конфликтов: детекция расхождений, merge-диалог («в облаке на N записей больше — объединить?»), outbox-очередь операций
 - [ ] 10.6 Миграции локальной схемы: `db.v` + реестр апгрейдов вместо ad-hoc проверок в `loadDB`
