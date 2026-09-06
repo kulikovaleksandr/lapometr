@@ -88,6 +88,13 @@ export interface TelegramCfg {
   remindVet: boolean;  // события вет-календаря
 }
 
+/**
+ * Актуальная версия локальной схемы БД. При добавлении/изменении полей
+ * bump-ится здесь, а соответствующий апгрейд дописывается в реестр
+ * MIGRATIONS в lib/db.ts — loadDB() накатит его на сохранённые данные.
+ */
+export const SCHEMA_VERSION = 3;
+
 export interface DB {
   v: number;
   users: User[];

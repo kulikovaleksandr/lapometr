@@ -2,6 +2,7 @@ import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import type {
   ActivityDef, ChatMessage, DB, IconName, LogEntry, Pet, Species, VetEvent,
 } from "./types";
+import { migrateDB } from "./db";
 
 /**
  * Облачный слой (Supabase).
@@ -208,9 +209,8 @@ export async function cloudPull(): Promise<CloudResult<CloudSnapshot | null>> {
   if (!Array.isArray(d.users) || !Array.isArray(d.pets) || !Array.isArray(d.logs)) {
     return { ok: false, error: "Снапшот повреждён" };
   }
-  if (!Array.isArray(d.chat)) d.chat = []; // снапшоты старых версий
-  if (!Array.isArray(d.events)) d.events = [];
   if (!Array.isArray(d.users)) d.users = [];
+  migrateDB(d); // снапшоты старых версий — накатываем реестр апгрейдов
 
   /* гигиена: в снапшоте нет e-mail/паролей. Возвращаем e-mail текущего
      пользователя из активной облачной сессии (по связке cloudId). */
