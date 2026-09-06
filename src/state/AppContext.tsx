@@ -14,8 +14,9 @@ import {
 } from "../lib/db";
 import { markSent, tgSend, wasSent } from "../lib/telegram";
 import {
-  cloudClaimInvite, cloudCurrentUser, cloudFetchDisplays, cloudFetchPetBundle,
-  cloudSendDiff, cloudTouchAccess, loadCloudConfig, onCloudAuthChange,
+  cloudClaimInvite, cloudCurrentUser, cloudDeletePhotoUrls, cloudFetchDisplays,
+  cloudFetchPetBundle, cloudSendDiff, cloudTouchAccess, cloudUploadPhoto,
+  cloudUpsertLogRow, isStorageUrl, loadCloudConfig, onCloudAuthChange,
   subscribeRealtime, type CloudUser, type PetBundle, type RtPayload, type RtStatus,
 } from "../lib/cloud";
 
@@ -415,6 +416,23 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (userPets.length > 0) toast(`${p.name} теперь в вашей стае`);
   };
 
+  /** base64-фото → Supabase Storage → ссылка в logs.img (локально и в облаке) */
+  const persistPhoto = (logId: string, petId: string, dataUrl: string) => {
+    if (!loadCloudConfig() || !cloudUserRef.current) return;
+    void cloudUploadPhoto(petId, logId, dataUrl).then(async (url) => {
+      if (!url) {
+        toast("Фото не загрузилось в облако — осталось на устройстве", "warn");
+        return;
+      }
+      const d = structuredClone(dbRef.current);
+      const l = d.logs.find((x) => x.id === logId);
+      if (!l) return;
+      l.img = url;
+      commit(d, { fromCloud: true });
+      await cloudUpsertLogRow(d, l);
+    });
+  };
+
   const complete = (actId: string, img?: string) => {
     if (!user || !pet) return;
     const act = acts.find((a) => a.id === actId);
@@ -424,11 +442,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (st.blocked) { toast(st.blocked, "err"); return; }
     const before = pawsOf(acts, logs);
     const d = structuredClone(db);
-    d.logs.push({ id: uid(), petId: pet.id, actId, ownerId: user.id, at: t, ...(img ? { img } : {}) });
+    const logId = uid();
+    d.logs.push({ id: logId, petId: pet.id, actId, ownerId: user.id, at: t, ...(img ? { img } : {}) });
     commit(d);
     toast(`+${act.paws} лапок: «${act.title}»`, "paw");
     if (levelFor(before + act.paws).idx > levelFor(before).idx) {
       setTimeout(() => toast(`Новый уровень заботы: «${levelFor(before + act.paws).title}»`, "ok"), 700);
+    }
+    /* фото улетает в Storage фоном: журнал не ждёт сеть */
+    if (img && img.startsWith("data:") && user.cloudId) {
+      setTimeout(() => persistPhoto(logId, pet.id, img), 600);
     }
   };
 
@@ -458,11 +481,19 @@ export function AppProvider({ children }: { children: ReactNode }) {
   };
 
   const deleteAct = (id: string) => {
+    const gonePhotos = db.logs
+      .filter((l) => l.actId === id && isStorageUrl(l.img))
+      .map((l) => l.img as string);
     const d = structuredClone(db);
     d.acts = d.acts.filter((x) => x.id !== id);
     d.logs = d.logs.filter((l) => l.actId !== id);
     commit(d);
     toast("Активность удалена вместе со своими записями", "warn");
+    if (gonePhotos.length && loadCloudConfig()) {
+      void cloudDeletePhotoUrls(gonePhotos).then((n) => {
+        if (n > 0) toast(`Фото удалённых записей стёрты из облака (${n})`, "warn");
+      });
+    }
   };
 
   const regenInvite = () => {
@@ -650,10 +681,22 @@ export function AppProvider({ children }: { children: ReactNode }) {
   };
 
   const resetAll = () => {
-    ["lapometr.db.v1", "lapometr.notif.v1", "lapometr.tgsent.v1"].forEach((k) => localStorage.removeItem(k));
-    sessionStorage.removeItem("lapometr.session.v1");
-    sessionStorage.removeItem("lapometr.activepet.v1");
-    location.reload();
+    const photos = db.logs.map((l) => l.img).filter((i): i is string => isStorageUrl(i));
+    const wipe = () => {
+      ["lapometr.db.v1", "lapometr.notif.v1", "lapometr.tgsent.v1"].forEach((k) => localStorage.removeItem(k));
+      sessionStorage.removeItem("lapometr.session.v1");
+      sessionStorage.removeItem("lapometr.activepet.v1");
+      location.reload();
+    };
+    if (photos.length && loadCloudConfig()) {
+      toast("Стираем фото из облака…", "warn");
+      Promise.race([
+        cloudDeletePhotoUrls(photos),
+        new Promise<number>((r) => setTimeout(() => r(0), 2500)),
+      ]).catch(() => 0).finally(wipe);
+    } else {
+      wipe();
+    }
   };
 
   /** Полная замена БД (загрузка снапшота из облака) */

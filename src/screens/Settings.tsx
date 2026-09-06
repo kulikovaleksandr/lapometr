@@ -2,8 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import { useApp } from "../state/AppContext";
 import {
   clearCloudConfig, cloudCurrentUser, cloudFullPush, cloudPull, cloudSignIn,
-  cloudSignInGoogle, cloudSignOut, cloudSignUp, lastSyncAt, loadCloudConfig,
-  onCloudAuthChange, saveCloudConfig, testConnection,
+  cloudSignInGoogle, cloudSignOut, cloudSignUp, cloudStorageOk, lastSyncAt,
+  loadCloudConfig, onCloudAuthChange, saveCloudConfig, testConnection,
   type CloudSnapshot, type CloudUser,
 } from "../lib/cloud";
 import { tgTestSend } from "../lib/telegram";
@@ -525,6 +525,14 @@ function CloudPanel() {
   const [pass, setPass] = useState("");
   const [lastSync, setLastSync] = useState<number | null>(() => lastSyncAt());
   const [pullAsk, setPullAsk] = useState<CloudSnapshot | null>(null);
+  const [storageOk, setStorageOk] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    if (!cloudUser) { setStorageOk(null); return; }
+    let alive = true;
+    cloudStorageOk().then((ok) => { if (alive) setStorageOk(ok); });
+    return () => { alive = false; };
+  }, [cloudUser]);
 
   useEffect(() => {
     let alive = true;
@@ -683,6 +691,21 @@ function CloudPanel() {
                   <p className="text-[12px] font-bold uppercase tracking-wider text-mute">Синхронизация</p>
                   <p className="mt-1 text-[12.5px] text-mute">
                     {lastSync ? `Последний обмен: ${fmt(lastSync)}` : "Ещё не синхронизировали"}
+                  </p>
+                  <p className="mt-1 flex items-center gap-1.5 text-[12.5px] text-mute" title="Фото записей журнала">
+                    <Icon
+                      name={storageOk ? "check" : storageOk === false ? "alert" : "camera"}
+                      size={13}
+                      className={storageOk ? "text-ok" : storageOk === false ? "text-danger" : "text-mute"}
+                    />
+                    Фото в облаке:{" "}
+                    {storageOk === null && cloudUser
+                      ? "проверяем бакет…"
+                      : storageOk
+                        ? "бакет pet-photos готов"
+                        : storageOk === false
+                          ? "бакет не найден — накатите миграцию 004"
+                          : "—"}
                   </p>
                   <p className="mt-1.5 flex items-center gap-1.5 text-[12px] font-semibold">
                     <span

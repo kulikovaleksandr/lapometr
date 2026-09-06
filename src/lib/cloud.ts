@@ -474,6 +474,100 @@ export async function cloudTouchAccess(petId: string, name: string, color: strin
   } catch { /* не критично: имя подтянется при полной отправке */ }
 }
 
+/* ==================================================================
+   STORAGE: фотографии записей (миграция 004, бакет pet-photos)
+   Путь объекта: {pet_id}/{log_id}.jpg
+   ================================================================== */
+
+const BUCKET = "pet-photos";
+
+function dataUrlToBlob(dataUrl: string): Blob | null {
+  const m = dataUrl.match(/^data:([^;]+);base64,(.+)$/);
+  if (!m) return null;
+  const bin = atob(m[2]);
+  const arr = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+  return new Blob([arr], { type: m[1] });
+}
+
+export const photoStoragePath = (petId: string, logId: string) => `${petId}/${logId}.jpg`;
+
+/** true, если img — уже ссылка в Storage (а не base64 на устройстве) */
+export const isStorageUrl = (img?: string | null) => !!img && !img.startsWith("data:");
+
+/** Загрузить фото; вернуть публичный URL или null */
+export async function cloudUploadPhoto(
+  petId: string, logId: string, dataUrl: string,
+): Promise<string | null> {
+  const sb = getClient();
+  if (!sb) return null;
+  const blob = dataUrlToBlob(dataUrl);
+  if (!blob) return null;
+  const path = photoStoragePath(petId, logId);
+  try {
+    const { error } = await sb.storage.from(BUCKET).upload(path, blob, {
+      contentType: blob.type || "image/jpeg",
+      upsert: true,
+    });
+    if (error) return null;
+    return sb.storage.from(BUCKET).getPublicUrl(path).data.publicUrl;
+  } catch {
+    return null;
+  }
+}
+
+function storagePathFromUrl(url: string): string | null {
+  const i = url.indexOf(`/${BUCKET}/`);
+  if (i < 0) return null;
+  return decodeURIComponent(url.slice(i + BUCKET.length + 2));
+}
+
+/** Удалить фото по публичным URL; вернуть число удалённых */
+export async function cloudDeletePhotoUrls(urls: string[]): Promise<number> {
+  const sb = getClient();
+  if (!sb) return 0;
+  const paths = [...new Set(
+    urls.map(storagePathFromUrl).filter((p): p is string => !!p),
+  )];
+  if (!paths.length) return 0;
+  try {
+    const { error } = await sb.storage.from(BUCKET).remove(paths);
+    return error ? 0 : paths.length;
+  } catch {
+    return 0;
+  }
+}
+
+/** Доступен ли бакет (накатана ли миграция 004) */
+export async function cloudStorageOk(): Promise<boolean> {
+  const sb = getClient();
+  if (!sb) return false;
+  try {
+    const { data } = await sb.storage.getBucket(BUCKET);
+    return !!data;
+  } catch {
+    return false;
+  }
+}
+
+/** Живой upsert одной строки журнала (например, после замены base64 на URL) */
+export async function cloudUpsertLogRow(db: DB, log: LogEntry): Promise<void> {
+  const sb = getClient();
+  if (!sb) return;
+  const owner = db.users.find((u) => u.id === log.ownerId);
+  if (!owner?.cloudId) return;
+  try {
+    await sb.rpc("mirror_upsert_logs", {
+      rows: [{
+        id: log.id, pet_id: log.petId, act_id: log.actId,
+        owner_id: owner.cloudId, at: iso(log.at), img: log.img ?? null,
+      }],
+    });
+  } catch {
+    /* best effort: покроется ручной полной отправкой */
+  }
+}
+
 /* ---------- подписка на живые изменения ---------- */
 
 export type RtStatus = "off" | "connecting" | "live";
