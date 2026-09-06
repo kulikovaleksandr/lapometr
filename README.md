@@ -117,10 +117,14 @@ Cloudflare Pages, nginx, GitHub Pages с rewrite на `index.html`).
 ### Режим 2. Supabase Cloud (рекомендуется для прода)
 
 1. Зарегистрируйтесь на [supabase.com](https://supabase.com) и создайте проект (Free plan).
-2. Откройте **SQL Editor** и по очереди выполните две миграции из этого репозитория:
+2. Откройте **SQL Editor** и по очереди выполните миграции из этого репозитория:
    - [`supabase/migrations/001_init.sql`](supabase/migrations/001_init.sql) — таблицы, RLS-политики,
      анти-чит триггер лимитов, функция `claim_invite()`;
-   - [`supabase/migrations/002_chat_photos.sql`](supabase/migrations/002_chat_photos.sql) — чат хозяев и фото к записям.
+   - [`supabase/migrations/002_chat_photos.sql`](supabase/migrations/002_chat_photos.sql) — чат хозяев и фото к записям;
+   - [`supabase/migrations/003_realtime.sql`](supabase/migrations/003_realtime.sql) — Realtime-синхронизация
+     журнала/чата/событий, построчная синхронизация, вход по коду между устройствами;
+   - [`supabase/migrations/004_storage.sql`](supabase/migrations/004_storage.sql) — бакет `pet-photos`
+     и политики для хранения фото в Supabase Storage.
 3. Включите провайдеры входа: **Authentication → Providers → Email** (включён по умолчанию)
    и **Google** (см. раздел «Google OAuth» ниже).
 4. Скопируйте **Settings → API**: `Project URL` и ключ `anon public`.
@@ -278,6 +282,10 @@ src/
 - Облачный режим: доступ ограничен RLS-политиками на уровне Postgres; лимиты
   активностей проверяются триггером `enforce_log_limits()` — накрутка
   невозможна даже прямым запросом к API.
+- Резервный снапшот (`sync_snapshots`) проходит гигиену `sanitizeForCloud()`:
+  хэши паролей и e-mail в облако не попадают — снапшот хранит только данные
+  (журнал, лапки, питомцы, чат). После восстановления вход продолжается через
+  облачный аккаунт (связка `cloudId`), e-mail возвращается из сессии Supabase.
 - Никогда не коммитьте `service_role`-ключ Supabase и `.env` self-hosted стека;
   в приложении используется только публичный `anon`-ключ.
 
@@ -290,7 +298,8 @@ src/
 - **Фаза 10 «Настоящее облако» — в работе.** Готово: Realtime-синхронизация журнала,
   чата и вет-событий между устройствами (10.1); фото в Supabase Storage вместо base64
   (10.2); построчная синхронизация `pets`/`pet_owners`/`activity_defs`/`logs`/`chat`
-  с резервным снапшотом (10.3). Дальше: гигиена снапшотов (10.4), разрешение
+  с резервным снапшотом (10.3); гигиена снапшотов — пароли и e-mail не покидают
+  устройство, восстановление через облачную сессию (10.4). Дальше: разрешение
   конфликтов, миграции локальной схемы, защита квоты localStorage.
 
 ## Лицензия

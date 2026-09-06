@@ -102,6 +102,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const dbRef = useRef(db);
   const cloudUserRef = useRef<CloudUser | null>(null);
   const userRef = useRef<User | null>(null);
+  const autoLoginTried = useRef(false);
   const setDbBoth = useCallback((d: DB) => { dbRef.current = d; setDb(d); }, []);
 
   /* ---------- облачная сессия ---------- */
@@ -210,6 +211,23 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (u) { u.cloudId = cloudUser.id; commit(d, { fromCloud: true }); }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cloudUser, user?.id]);
+
+  /* Авто-вход по облачной сессии (один раз за загрузку).
+     Снапшот не хранит пароли (гигиена), поэтому после восстановления или на
+     новом устройстве вход продолжается через облачный аккаунт: если локальной
+     сессии нет, но есть активная облачная, связанная с локальным профилем по
+     cloudId, — логинимся под ним. Явный logout в течение сессии не затирается,
+     т.к. попытка делается единожды. */
+  useEffect(() => {
+    if (autoLoginTried.current || !cloudUser) return;
+    autoLoginTried.current = true;
+    if (userId) return;
+    const linked = dbRef.current.users.find((u) => u.cloudId === cloudUser.id);
+    if (!linked) return;
+    setUserId(linked.id);
+    saveSession(linked.id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cloudUser, userId]);
 
   /* ---------- Realtime: живые записи с других устройств ---------- */
   useEffect(() => { userRef.current = user; }, [user]);
@@ -742,13 +760,24 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const replaceDb = (next: DB) => {
     lastSaved.current = JSON.stringify(next);
     saveDB(next);
-    setDb(next);
-    if (userId && !next.users.some((u) => u.id === userId)) {
+    setDbBoth(next);
+    if (userId && next.users.some((u) => u.id === userId)) {
+      toast("Данные из облака загружены", "ok");
+      return;
+    }
+    /* Текущего аккаунта нет в снапшоте. Так как снапшот не хранит пароли,
+       пробуем войти по облачной связке (cloudId) — это делает восстановление
+       на новом устройстве бесшовным. */
+    const cu = cloudUserRef.current;
+    const linked = cu ? next.users.find((u) => u.cloudId === cu.id) : undefined;
+    if (linked) {
+      setUserId(linked.id);
+      saveSession(linked.id);
+      toast("Данные восстановлены — вход по облачному аккаунту", "ok");
+    } else {
       saveSession(null);
       setUserId(null);
       toast("В снапшоте другие аккаунты — войдите заново", "warn");
-    } else {
-      toast("Данные из облака загружены", "ok");
     }
   };
 

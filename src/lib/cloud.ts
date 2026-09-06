@@ -159,6 +159,22 @@ const toUser = (id: string, email: string | null | undefined, provider: string):
 
 /* ---------- синхронизация (снапшот) ---------- */
 
+/**
+ * Гигиена снапшота: вырезаем чувствительные поля перед отправкой в облако.
+ * Снапшот — резервная копия ДАННЫХ (журнал, лапки, питомцы, чат), а не
+ * учётных данных: хэши паролей и e-mail никогда не покидают устройство.
+ *
+ * После восстановления вход идёт через облачную сессию (связка `cloudId`),
+ * а e-mail текущего пользователя возвращается из сессии Supabase при
+ * загрузке (см. `cloudPull`). Аватары намеренно сохраняем — это данные
+ * пользователя, нужные для целостного восстановления.
+ */
+export function sanitizeForCloud(db: DB): DB {
+  const d = structuredClone(db);
+  d.users = d.users.map((u) => ({ ...u, pass: "", email: "" }));
+  return d;
+}
+
 export async function cloudPush(db: DB): Promise<CloudResult<{ at: number }>> {
   const sb = getClient();
   if (!sb) return { ok: false, error: "Облако не подключено" };
@@ -167,7 +183,7 @@ export async function cloudPush(db: DB): Promise<CloudResult<{ at: number }>> {
   const now = Date.now();
   const { error } = await sb.from("sync_snapshots").upsert({
     user_id: user.id,
-    data: db as unknown as Record<string, unknown>,
+    data: sanitizeForCloud(db) as unknown as Record<string, unknown>,
     updated_at: new Date(now).toISOString(),
   });
   if (error) return { ok: false, error: tr(error.message) };
@@ -194,6 +210,13 @@ export async function cloudPull(): Promise<CloudResult<CloudSnapshot | null>> {
   }
   if (!Array.isArray(d.chat)) d.chat = []; // снапшоты старых версий
   if (!Array.isArray(d.events)) d.events = [];
+  if (!Array.isArray(d.users)) d.users = [];
+
+  /* гигиена: в снапшоте нет e-mail/паролей. Возвращаем e-mail текущего
+     пользователя из активной облачной сессии (по связке cloudId). */
+  const linked = d.users.find((u) => u.cloudId === user.id);
+  if (linked && user.email) linked.email = user.email;
+
   return { ok: true, data: { data: d, updatedAt: Date.parse(data.updated_at) } };
 }
 
@@ -316,11 +339,11 @@ export async function cloudFullPush(db: DB, meLocalId: string): Promise<CloudRes
     if (error) return { ok: false, error: tr(`события: ${error.message}`) };
   }
 
-  /* 7. снапшот — резервная копия */
+  /* 7. снапшот — резервная копия (без паролей и e-mail, см. sanitizeForCloud) */
   const now = Date.now();
   const { error: se } = await sb.from("sync_snapshots").upsert({
     user_id: me.id,
-    data: db as unknown as Record<string, unknown>,
+    data: sanitizeForCloud(db) as unknown as Record<string, unknown>,
     updated_at: new Date(now).toISOString(),
   });
   if (se) return { ok: false, error: tr(se.message) };
