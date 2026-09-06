@@ -360,10 +360,11 @@ export interface RowDiff {
   delEvents: string[];
 }
 
-export async function cloudSendDiff(db: DB, meLocalId: string, diff: RowDiff): Promise<void> {
+/** Возвращает true, если все строки ушли в облако, иначе false (для outbox). */
+export async function cloudSendDiff(db: DB, meLocalId: string, diff: RowDiff): Promise<boolean> {
   const sb = getClient();
   const me = db.users.find((u) => u.id === meLocalId);
-  if (!sb || !me?.cloudId) return;
+  if (!sb || !me?.cloudId) return false;
   try {
     if (diff.logs.length) {
       const rows = diff.logs
@@ -397,9 +398,73 @@ export async function cloudSendDiff(db: DB, meLocalId: string, diff: RowDiff): P
     if (diff.delEvents.length) {
       await sb.from("vet_events").delete().in("id", diff.delEvents);
     }
+    return true;
   } catch {
-    /* досылка — best effort: ручной «Отправить в облако» всё покроет */
+    return false;
   }
+}
+
+/* ---------- outbox: очередь операций, не ушедших в облако ---------- */
+
+const OUTBOX_KEY = "lapometr.outbox.v1";
+const OUTBOX_CAP = 100;
+
+export function loadOutbox(): RowDiff[] {
+  try {
+    const raw = localStorage.getItem(OUTBOX_KEY);
+    if (raw) {
+      const q = JSON.parse(raw) as RowDiff[];
+      if (Array.isArray(q)) return q;
+    }
+  } catch { /* повреждённая очередь — начинаем заново */ }
+  return [];
+}
+
+const saveOutboxQueue = (q: RowDiff[]) => {
+  try { localStorage.setItem(OUTBOX_KEY, JSON.stringify(q.slice(-OUTBOX_CAP))); }
+  catch { /* переполнение localStorage — очередь не критична */ }
+};
+
+export const clearOutbox = () => localStorage.removeItem(OUTBOX_KEY);
+export const outboxCount = (): number =>
+  loadOutbox().reduce((n, d) => n + d.logs.length + d.chat.length + d.events.length + d.delEvents.length, 0);
+
+/** Добавить неотправленную разницу в очередь (с дедупликацией по id). */
+export function enqueueOutbox(diff: RowDiff): void {
+  const q = loadOutbox();
+  const hasLog = new Set(q.flatMap((d) => d.logs.map((l) => l.id)));
+  const hasChat = new Set(q.flatMap((d) => d.chat.map((m) => m.id)));
+  const hasEv = new Set(q.flatMap((d) => d.events.map((e) => e.id)));
+  const hasDel = new Set(q.flatMap((d) => d.delEvents));
+  const merged: RowDiff = {
+    logs: diff.logs.filter((l) => !hasLog.has(l.id)),
+    chat: diff.chat.filter((m) => !hasChat.has(m.id)),
+    events: diff.events.filter((e) => !hasEv.has(e.id)),
+    delEvents: diff.delEvents.filter((id) => !hasDel.has(id)),
+  };
+  if (merged.logs.length || merged.chat.length || merged.events.length || merged.delEvents.length) {
+    q.push(merged);
+    saveOutboxQueue(q);
+  }
+}
+
+/**
+ * Отправить накопленную очередь. Успешные операции удаляются,
+ * неудачные остаются до следующей попытки. Возвращает число отправленных строк.
+ */
+export async function flushOutbox(db: DB, meLocalId: string): Promise<number> {
+  const q = loadOutbox();
+  if (!q.length) return 0;
+  let sent = 0;
+  const rest: RowDiff[] = [];
+  for (const diff of q) {
+    const ok = await cloudSendDiff(db, meLocalId, diff);
+    if (ok) sent += diff.logs.length + diff.chat.length + diff.events.length + diff.delEvents.length;
+    else rest.push(diff);
+  }
+  if (rest.length) saveOutboxQueue(rest);
+  else clearOutbox();
+  return sent;
 }
 
 /* ---------- вход по коду через облако ---------- */
@@ -655,6 +720,60 @@ export function mergeRemoteRows(
   }
 
   return { db: d, stats };
+}
+
+/* ---------- детекция расхождений (двусторонняя) ---------- */
+
+export interface Divergence {
+  /** облако → локально: будет добавлено при слиянии */
+  incoming: MergeStats;
+  /** локально → облако: ещё не отправлено */
+  outgoing: MergeStats;
+}
+
+export const divergenceTotal = (s: MergeStats): number =>
+  s.pets + s.acts + s.logs + s.chat + s.events + s.owners;
+
+/**
+ * Сравнивает локальную БД с облачными строками и находит расхождения в обе
+ * стороны, не выполняя слияния. Используется для merge-диалога.
+ */
+export function computeDivergence(
+  local: DB, remote: RemoteRows, meLocalId: string,
+): Divergence {
+  const localPetIds = new Set(local.pets.map((p) => p.id));
+  const localActIds = new Set(local.acts.map((a) => a.id));
+  const localLogIds = new Set(local.logs.map((l) => l.id));
+  const localChatIds = new Set(local.chat.map((m) => m.id));
+  const localEventIds = new Set(local.events.map((e) => e.id));
+
+  const incoming: MergeStats = {
+    pets: remote.pets.filter((p) => !localPetIds.has(p.id)).length,
+    acts: remote.acts.filter((a) => !localActIds.has(a.id)).length,
+    logs: remote.logs.filter((l) => !localLogIds.has(l.id)).length,
+    chat: remote.chat.filter((c) => !localChatIds.has(c.id)).length,
+    events: remote.events.filter((e) => !localEventIds.has(e.id)).length,
+    owners: 0,
+  };
+
+  const myPetIds = new Set(
+    local.pets.filter((p) => p.ownerIds.includes(meLocalId)).map((p) => p.id),
+  );
+  const remoteActIds = new Set(remote.acts.map((a) => a.id));
+  const remoteLogIds = new Set(remote.logs.map((l) => l.id));
+  const remoteChatIds = new Set(remote.chat.map((m) => m.id));
+  const remoteEventIds = new Set(remote.events.map((e) => e.id));
+
+  const outgoing: MergeStats = {
+    pets: 0,
+    acts: local.acts.filter((a) => myPetIds.has(a.petId) && !remoteActIds.has(a.id)).length,
+    logs: local.logs.filter((l) => myPetIds.has(l.petId) && !remoteLogIds.has(l.id)).length,
+    chat: local.chat.filter((c) => myPetIds.has(c.petId) && !remoteChatIds.has(c.id)).length,
+    events: local.events.filter((e) => myPetIds.has(e.petId) && !remoteEventIds.has(e.id)).length,
+    owners: 0,
+  };
+
+  return { incoming, outgoing };
 }
 
 /** Отображаемые имена/цвета хозяев по их cloud id (из cloud_access) */

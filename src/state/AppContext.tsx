@@ -15,10 +15,12 @@ import {
 import { markSent, tgSend, wasSent } from "../lib/telegram";
 import {
   cloudClaimInvite, cloudCurrentUser, cloudDeletePhotoUrls, cloudFetchDisplays,
-  cloudFetchPetBundle, cloudRowFetch, cloudSendDiff, cloudTouchAccess,
-  cloudUploadPhoto, cloudUpsertLogRow, isStorageUrl, loadCloudConfig,
-  mergeRemoteRows, onCloudAuthChange,
-  subscribeRealtime, type CloudUser, type PetBundle, type RtPayload, type RtStatus,
+  cloudFetchPetBundle, cloudFullPush, cloudRowFetch, cloudSendDiff, cloudTouchAccess,
+  cloudUploadPhoto, cloudUpsertLogRow, computeDivergence, divergenceTotal,
+  enqueueOutbox, flushOutbox, isStorageUrl, loadCloudConfig,
+  mergeRemoteRows, onCloudAuthChange, outboxCount,
+  subscribeRealtime,
+  type CloudUser, type Divergence, type PetBundle, type RemoteRows, type RtPayload, type RtStatus,
 } from "../lib/cloud";
 
 export interface Toast { id: string; text: string; kind: "ok" | "warn" | "err" | "paw" }
@@ -79,6 +81,14 @@ interface Ctx {
   replaceDb: (next: DB) => void;
   /** Построчная синхронизация из облака: долить недостающие строки */
   syncFromCloud: () => Promise<string | null>;
+  /** Детекция расхождений с облаком без слияния (для merge-диалога) */
+  fetchDivergence: () => Promise<Divergence | string>;
+  /** Применить отложенное слияние с облаком (после подтверждения в диалоге) */
+  applyMerge: () => Promise<void>;
+  /** Отправить накопленную outbox-очередь неотправленных операций */
+  flushOutboxNow: () => Promise<number>;
+  /** Число операций в outbox-очереди, ожидающих отправки */
+  outboxN: number;
 }
 
 const AppCtx = createContext<Ctx | null>(null);
@@ -94,9 +104,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [tg, setTgState] = useState<TelegramCfg>(() => loadTelegram());
   const [cloudUser, setCloudUser] = useState<CloudUser | null>(null);
   const [rtStatus, setRtStatus] = useState<RtStatus>("off");
+  const [outboxN, setOutboxN] = useState<number>(() => outboxCount());
   const lastSaved = useRef<string>("");
   const notified = useRef<Set<string>>(new Set());
   const lastRtToast = useRef(0);
+  /* облачные строки, отложенные для merge-диалога (применяются в applyMerge) */
+  const pendingRemoteRef = useRef<RemoteRows | null>(null);
 
   /* актуальные значения для колбэков подписки */
   const dbRef = useRef(db);
@@ -191,7 +204,19 @@ export function AppProvider({ children }: { children: ReactNode }) {
         .map((e) => e.id),
     };
     if (!diff.logs.length && !diff.chat.length && !diff.events.length && !diff.delEvents.length) return;
-    void cloudSendDiff(next, me.id, diff);
+    if (!navigator.onLine) {
+      /* офлайн: складываем в очередь, отправим при появлении сети */
+      enqueueOutbox(diff);
+      setOutboxN(outboxCount());
+      return;
+    }
+    void cloudSendDiff(next, me.id, diff).then((ok) => {
+      if (!ok) {
+        /* не ушло (сеть мигнула, сервер недоступен) — в очередь */
+        enqueueOutbox(diff);
+        setOutboxN(outboxCount());
+      }
+    });
   }, []);
 
   const commit = useCallback((d: DB, opts?: { fromCloud?: boolean }) => {
@@ -228,6 +253,26 @@ export function AppProvider({ children }: { children: ReactNode }) {
     saveSession(linked.id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cloudUser, userId]);
+
+  /* ---------- outbox: авто-отправка очереди при появлении сети / Realtime ---------- */
+  const doFlushOutbox = useCallback(() => {
+    const cu = cloudUserRef.current;
+    const me = cu ? dbRef.current.users.find((u) => u.cloudId === cu.id) : null;
+    if (!cu || !me || !loadCloudConfig() || !navigator.onLine) return;
+    if (!outboxCount()) return;
+    void flushOutbox(dbRef.current, me.id).finally(() => setOutboxN(outboxCount()));
+  }, []);
+
+  useEffect(() => {
+    const onOnline = () => doFlushOutbox();
+    window.addEventListener("online", onOnline);
+    return () => window.removeEventListener("online", onOnline);
+  }, [doFlushOutbox]);
+
+  /* при восстановлении Realtime-канала тоже пробуем разобрать очередь */
+  useEffect(() => {
+    if (rtStatus === "live") doFlushOutbox();
+  }, [rtStatus, doFlushOutbox]);
 
   /* ---------- Realtime: живые записи с других устройств ---------- */
   useEffect(() => { userRef.current = user; }, [user]);
@@ -655,6 +700,48 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return null;
   };
 
+  /**
+   * Детекция расхождений с облаком без слияния. Скачивает облачные строки,
+   * откладывает их для applyMerge и возвращает двустороннюю разницу —
+   * её показывает merge-диалог («в облаке на N записей больше — объединить?»).
+   */
+  const fetchDivergence = async (): Promise<Divergence | string> => {
+    if (!user) return "Нужна учётная запись";
+    if (!user.cloudId) return "Локальный профиль не связан с облачным аккаунтом";
+    const res = await cloudRowFetch(user.cloudId);
+    if (!res.ok) return res.error;
+    const remote = res.data;
+    if (!remote) return "Не удалось прочитать данные из облака";
+    pendingRemoteRef.current = remote;
+    return computeDivergence(dbRef.current, remote, user.id);
+  };
+
+  /**
+   * Применить отложенное слияние: заново мерджит свежие локальные данные с
+   * облачными строками (безопасно, если между диалогом и подтверждением были
+   * новые записи), коммитит и досылает всё обратно для двусторонней целостности.
+   */
+  const applyMerge = async (): Promise<void> => {
+    const remote = pendingRemoteRef.current;
+    if (!remote || !user?.cloudId) return;
+    const { db: merged, stats } = mergeRemoteRows(dbRef.current, remote, user.id, user.cloudId);
+    commit(merged, { fromCloud: true });
+    pendingRemoteRef.current = null;
+    /* двусторонняя целостность: полное зеркало (идемпотентно) + разбор очереди */
+    void cloudFullPush(dbRef.current, user.id);
+    void flushOutbox(dbRef.current, user.id).finally(() => setOutboxN(outboxCount()));
+    const added = divergenceTotal(stats);
+    toast(added > 0 ? `Объединено с облаком: добавлено ${added} строк` : "Объединено с облаком");
+  };
+
+  /** Отправить накопленную очередь неотправленных операций вручную. */
+  const flushOutboxNow = async (): Promise<number> => {
+    if (!user?.cloudId) return 0;
+    const sent = await flushOutbox(dbRef.current, user.id);
+    setOutboxN(outboxCount());
+    return sent;
+  };
+
   const sendMessage = (text: string) => {
     if (!user || !pet) return;
     const t = text.trim();
@@ -789,6 +876,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     userPets, setActivePet, chat, sendMessage,
     events, tg, setTg, addEvent, updateEvent, deleteEvent,
     cloudUser, rtStatus, syncFromCloud,
+    fetchDivergence, applyMerge, flushOutboxNow, outboxN,
   };
 
   return <AppCtx.Provider value={value}>{children}</AppCtx.Provider>;
