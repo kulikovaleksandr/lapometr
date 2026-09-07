@@ -75,12 +75,34 @@
 - [x] 9.4d Единый тик напоминаний: браузерные уведомления + Telegram для активностей и вет-событий
 
 ## Фаза 10 — Настоящее облако
-- [ ] 10.1 Realtime-синхронизация журнала и чата между устройствами (Supabase Realtime: `logs`, `chat_messages`, события)
-- [ ] 10.2 Фото в Supabase Storage вместо base64: загрузка при отметке, ссылка в `logs.img`, чистка при удалении
-- [ ] 10.3 Построчная синхронизация `pets`/`pet_owners`/`activity_defs`/`logs`/`chat` поверх снапшотов (снапшот — резервная копия)
-- [ ] 10.4 Гигиена снапшотов: вырезать `pass`/e-mail и чувствительные поля перед push
-- [ ] 10.5 Разрешение конфликтов: детекция расхождений, merge-диалог («в облаке на N записей больше — объединить?»), outbox-очередь операций
-- [ ] 10.6 Миграции локальной схемы: `db.v` + реестр апгрейдов вместо ad-hoc проверок в `loadDB`
+- [x] 10.1 Realtime-синхронизация журнала и чата между устройствами (Supabase Realtime: `logs`, `chat_messages`, события):
+  - [x] миграция `003_realtime.sql`: text-иды без FK, `cloud_access` (RLS-участие), `vet_events`, `mirror_upsert_logs()` (история в обход анти-чита), `claim_invite(text)`, подключение к публикации `supabase_realtime`
+  - [x] `lib/cloud.ts`: `cloudFullPush` (зеркало pets/acts/access/logs/chat/events + снапшот), `cloudSendDiff` (живая досылка на каждый commit), `cloudClaimInvite` + `cloudFetchPetBundle` (вход по коду между устройствами), `cloudFetchDisplays`, `subscribeRealtime`
+  - [x] `AppContext`: облачная сессия и `cloudId`, подписка с дедупликацией по id, «тени» удалённых хозяев (имя/цвет из `cloud_access`, автодобавление в `ownerIds`), тост «прилетело в журнал», статус `rtStatus`
+  - [x] Настройки: Realtime-индикатор (онлайн/подключение/офлайн), «Отправить в облако» = полное зеркало со счётчиками, код приглашения работает между устройствами
+- [x] 10.2 Фото в Supabase Storage вместо base64: загрузка при отметке, ссылка в `logs.img`, чистка при удалении (миграция `004_storage.sql`, бакет `pet-photos`, `cloudUploadPhoto`/`cloudDeletePhotoUrls`)
+- [x] 10.3 Построчная синхронизация `pets`/`pet_owners`/`activity_defs`/`logs`/`chat` поверх снапшотов (снапшот — резервная копия):
+  - [x] `lib/cloud.ts`: `cloudRowFetch` (все строки по своим питомцам, постранично), `mergeRemoteRows` (слияние по id, идемпотентно), мапперы `rowTo*`, `paged()`
+  - [x] зеркало `pet_owners` в `cloudFullPush`; участники (`memberIds`) в `PetBundle`
+  - [x] `AppContext.syncFromCloud` + «тени» удалённых хозяев; кнопка «Синхронизировать», снапшот — резерв («Снапшот…»)
+- [x] 10.4 Гигиена снапшотов: `sanitizeForCloud()` вырезает `pass`/e-mail перед записью в
+  `sync_snapshots` (оба места: `cloudPush`, `cloudFullPush`); локальная БД остаётся полной.
+  Восстановление бесшовное: e-mail возвращается из облачной сессии в `cloudPull`, авто-вход
+  по связке `cloudId` (одна попытка за загрузку), `replaceDb` входит по облачному аккаунту
+- [x] 10.5 Разрешение конфликтов: детекция расхождений, merge-диалог, outbox-очередь операций:
+  - [x] `lib/cloud.ts`: `computeDivergence()` (двусторонняя разница incoming/outgoing по id),
+    outbox (`enqueueOutbox`/`flushOutbox`/`outboxCount`/`clearOutbox`, дедупликация, cap 100),
+    `cloudSendDiff` возвращает успех для постановки в очередь
+  - [x] `AppContext`: `fetchDivergence` (без слияния), `applyMerge` (повторный мердж на подтверждении,
+    идемпотентно), `flushOutboxNow`, `outboxN`; авто-разбор очереди при возврате сети и подключении Realtime;
+    `sendDiff` ставит в outbox при офлайне/ошибке
+  - [x] Настройки: «Синхронизировать» = двухфазный поток с merge-диалогом («Из облака — к вам» /
+    «От вас — в облако», кнопки «Объединить и отправить» / «Позже»); строка outbox со счётчиком и кнопкой «Отправить»
+- [x] 10.6 Миграции локальной схемы: `db.v` + реестр апгрейдов вместо ad-hoc проверок в `loadDB`:
+  - [x] `SCHEMA_VERSION` в `lib/types.ts` (сейчас = 3); реестр `MIGRATIONS` в `lib/db.ts`
+    (идемпотентные апгрейды v1→v2 чат, v2→v3 события), `migrateDB()` накатывает цепочку
+  - [x] `loadDB()` мигрирует и пересохраняет новую версию; `emptyDB()`; `ensureDemo`/`buildDemoDB`
+    пишут актуальную версию; `cloudPull` использует `migrateDB` для снапшотов старых версий
 - [ ] 10.7 Защита квоты localStorage: graceful `QuotaExceeded` (тост, запись без фото), автоочистка самых старых фото
 
 ## Фаза 11 — Продакшен-инфраструктура

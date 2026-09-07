@@ -1,5 +1,5 @@
 import {
-  ActivityDef, DB, IconName, LogEntry, Pet, Species, User, hashPass, uid,
+  ActivityDef, DB, IconName, LogEntry, Pet, SCHEMA_VERSION, Species, User, hashPass, uid,
 } from "./types";
 
 export const AVATAR_COLORS = [
@@ -155,5 +155,5 @@ export function buildDemoDB(): DB {
   ];
 
   logs.sort((a, b) => a.at - b.at);
-  return { v: 1, users: [u1, u2], pets: [pet, pet2], acts: [...acts, ...acts2], logs, chat: [], events };
+  return { v: SCHEMA_VERSION, users: [u1, u2], pets: [pet, pet2], acts: [...acts, ...acts2], logs, chat: [], events };
 }

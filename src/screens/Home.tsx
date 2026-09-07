@@ -10,7 +10,7 @@ import { ActivityDef, levelFor } from "../lib/types";
 import type { Tab } from "../App";
 
 export function HomeScreen({ onNav }: { onNav: (t: Tab) => void }) {
-  const { user, pet, acts, logs, owners, now, complete, toast } = useApp();
+  const { user, pet, acts, logs, owners, now, complete, toast, cloudUser } = useApp();
   const [sel, setSel] = useState<ActivityDef | null>(null);
   const [burst, setBurst] = useState(0);
   const [photo, setPhoto] = useState<string | undefined>();
@@ -346,15 +346,22 @@ export function HomeScreen({ onNav }: { onNav: (t: Tab) => void }) {
             {/* фото к записи */}
             <div className="mt-4">
               {photo ? (
-                <div className="relative inline-block">
-                  <img src={photo} alt="Фото к записи" className="h-24 w-24 rounded-xl border border-line object-cover shadow-sm" />
-                  <button
-                    onClick={() => setPhoto(undefined)}
-                    className="absolute -right-2 -top-2 inline-flex h-6 w-6 items-center justify-center rounded-full bg-danger text-white shadow transition-transform hover:scale-110"
-                    aria-label="Убрать фото"
-                  >
-                    <Icon name="x" size={13} />
-                  </button>
+                <div>
+                  <div className="relative inline-block">
+                    <img src={photo} alt="Фото к записи" className="h-24 w-24 rounded-xl border border-line object-cover shadow-sm" />
+                    <button
+                      onClick={() => setPhoto(undefined)}
+                      className="absolute -right-2 -top-2 inline-flex h-6 w-6 items-center justify-center rounded-full bg-danger text-white shadow transition-transform hover:scale-110"
+                      aria-label="Убрать фото"
+                    >
+                      <Icon name="x" size={13} />
+                    </button>
+                  </div>
+                  {cloudUser && (
+                    <p className="mt-1.5 flex items-center gap-1 text-[11px] font-medium text-mute">
+                      <Icon name="cloud" size={12} />после отметки фото загрузится в облако
+                    </p>
+                  )}
                 </div>
               ) : (
                 <Btn variant="soft" size="sm" onClick={() => photoRef.current?.click()}>

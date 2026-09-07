@@ -19,6 +19,8 @@ export interface User {
   createdAt: number;
   demo?: boolean;
   guest?: boolean;
+  /** auth.uid() в Supabase — связка локального аккаунта с облачным */
+  cloudId?: string;
 }
 
 export interface Pet {
@@ -85,6 +87,13 @@ export interface TelegramCfg {
   remindDue: boolean;  // «пора выполнить активность»
   remindVet: boolean;  // события вет-календаря
 }
+
+/**
+ * Актуальная версия локальной схемы БД. При добавлении/изменении полей
+ * bump-ится здесь, а соответствующий апгрейд дописывается в реестр
+ * MIGRATIONS в lib/db.ts — loadDB() накатит его на сохранённые данные.
+ */
+export const SCHEMA_VERSION = 3;
 
 export interface DB {
   v: number;

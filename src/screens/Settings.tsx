@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import { useApp } from "../state/AppContext";
 import {
-  clearCloudConfig, cloudCurrentUser, cloudPull, cloudPush, cloudSignIn,
-  cloudSignInGoogle, cloudSignOut, cloudSignUp, lastSyncAt, loadCloudConfig,
-  onCloudAuthChange, saveCloudConfig, testConnection,
-  type CloudSnapshot, type CloudUser,
+  clearCloudConfig, cloudCurrentUser, cloudFullPush, cloudPull, cloudSignIn,
+  cloudSignInGoogle, cloudSignOut, cloudSignUp, cloudStorageOk, divergenceTotal,
+  lastSyncAt, loadCloudConfig, onCloudAuthChange, saveCloudConfig, testConnection,
+  type CloudSnapshot, type CloudUser, type Divergence,
 } from "../lib/cloud";
 import { tgTestSend } from "../lib/telegram";
 import { Btn, Field, Modal, Reveal, UserAvatar, cx, inputCls } from "../components/ui";
@@ -43,6 +43,7 @@ export function SettingsScreen({ onCopy }: { onCopy: (code: string) => void }) {
   const [img, setImg] = useState<string | undefined>(user?.img);
   const [joinCode, setJoinCode] = useState("");
   const [joinErr, setJoinErr] = useState<string | null>(null);
+  const [joinBusy, setJoinBusy] = useState(false);
   const [edit, setEdit] = useState<ActivityDef | "new" | null>(null);
   const [delAsk, setDelAsk] = useState<string | null>(null);
   const [resetAsk, setResetAsk] = useState(false);
@@ -50,8 +51,11 @@ export function SettingsScreen({ onCopy }: { onCopy: (code: string) => void }) {
 
   if (!user) return null;
 
-  const tryJoin = () => {
-    const r = joinPet(joinCode);
+  const tryJoin = async () => {
+    setJoinBusy(true);
+    setJoinErr(null);
+    const r = await joinPet(joinCode);
+    setJoinBusy(false);
     setJoinErr(r);
     if (!r) setJoinCode("");
   };
@@ -154,10 +158,12 @@ export function SettingsScreen({ onCopy }: { onCopy: (code: string) => void }) {
             )}
 
             <div className="mt-4">
-              <Field label="Ввести код приглашения (для аккаунта без питомца)">
+              <Field label="Ввести код приглашения" hint="С подключённым облаком код работает между устройствами: питомец скачается вместе с журналом">
                 <div className="flex gap-2">
-                  <input className={cx(inputCls, "flex-1")} value={joinCode} onChange={(e) => { setJoinCode(e.target.value); setJoinErr(null); }} placeholder="PAW-XXXX" />
-                  <Btn onClick={tryJoin} disabled={!joinCode.trim()}>Войти в стаю</Btn>
+                  <input className={cx(inputCls, "flex-1")} value={joinCode} onChange={(e) => { setJoinCode(e.target.value); setJoinErr(null); }} placeholder="BULKA-42" />
+                  <Btn onClick={() => void tryJoin()} disabled={!joinCode.trim() || joinBusy}>
+                    {joinBusy ? "Подключаем…" : "Войти в стаю"}
+                  </Btn>
                 </div>
               </Field>
               {joinErr && <p className="anim-fade mt-2 text-[12.5px] font-medium text-danger">{joinErr}</p>}
@@ -507,7 +513,10 @@ function GoogleG() {
 }
 
 function CloudPanel() {
-  const { db, replaceDb, toast, user } = useApp();
+  const {
+    db, replaceDb, toast, user, rtStatus,
+    fetchDivergence, applyMerge, flushOutboxNow, outboxN,
+  } = useApp();
   const [cfg, setCfg] = useState(() => loadCloudConfig());
   const [cloudUser, setCloudUser] = useState<CloudUser | null>(null);
   const [url, setUrl] = useState(cfg?.url ?? "");
@@ -519,6 +528,16 @@ function CloudPanel() {
   const [pass, setPass] = useState("");
   const [lastSync, setLastSync] = useState<number | null>(() => lastSyncAt());
   const [pullAsk, setPullAsk] = useState<CloudSnapshot | null>(null);
+  const [storageOk, setStorageOk] = useState<boolean | null>(null);
+  const [divergence, setDivergence] = useState<Divergence | null>(null);
+  const [merging, setMerging] = useState(false);
+
+  useEffect(() => {
+    if (!cloudUser) { setStorageOk(null); return; }
+    let alive = true;
+    cloudStorageOk().then((ok) => { if (alive) setStorageOk(ok); });
+    return () => { alive = false; };
+  }, [cloudUser]);
 
   useEffect(() => {
     let alive = true;
@@ -564,12 +583,46 @@ function CloudPanel() {
   };
 
   const doPush = async () => {
+    if (!user) return;
     setBusy("push"); setErr(null);
-    const r = await cloudPush(db);
+    const r = await cloudFullPush(db, user.id);
     setBusy(null);
     if (!r.ok) { setErr(r.error); return; }
-    setLastSync(r.data?.at ?? Date.now());
-    toast("Отправлено в облако", "ok");
+    setLastSync(Date.now());
+    const s = r.data;
+    toast(`Зеркало обновлено: ${s?.logs ?? 0} записей, ${s?.events ?? 0} событий`, "ok");
+  };
+
+  /** Фаза 1: найти расхождения и показать merge-диалог (или сказать, что всё чисто) */
+  const checkSync = async () => {
+    setBusy("sync"); setErr(null);
+    const r = await fetchDivergence();
+    setBusy(null);
+    if (typeof r === "string") { setErr(r); return; }
+    const hasIncoming = divergenceTotal(r.incoming) > 0;
+    const hasOutgoing = divergenceTotal(r.outgoing) > 0;
+    if (!hasIncoming && !hasOutgoing) {
+      toast("Всё актуально — расхождений с облаком нет");
+      setLastSync(Date.now());
+      return;
+    }
+    setDivergence(r);
+  };
+
+  /** Фаза 2: применить слияние после подтверждения в диалоге */
+  const doMerge = async () => {
+    setMerging(true); setErr(null);
+    await applyMerge();
+    setMerging(false);
+    setDivergence(null);
+    setLastSync(Date.now());
+  };
+
+  const doFlush = async () => {
+    setBusy("flush"); setErr(null);
+    const sent = await flushOutboxNow();
+    setBusy(null);
+    toast(sent > 0 ? `Отправлено ${sent} отложенных операций` : "Очередь пуста");
   };
 
   const doPull = async () => {
@@ -676,18 +729,75 @@ function CloudPanel() {
                   <p className="mt-1 text-[12.5px] text-mute">
                     {lastSync ? `Последний обмен: ${fmt(lastSync)}` : "Ещё не синхронизировали"}
                   </p>
+                  <p className="mt-1 flex items-center gap-1.5 text-[12.5px] text-mute" title="Фото записей журнала">
+                    <Icon
+                      name={storageOk ? "check" : storageOk === false ? "alert" : "camera"}
+                      size={13}
+                      className={storageOk ? "text-ok" : storageOk === false ? "text-danger" : "text-mute"}
+                    />
+                    Фото в облаке:{" "}
+                    {storageOk === null && cloudUser
+                      ? "проверяем бакет…"
+                      : storageOk
+                        ? "бакет pet-photos готов"
+                        : storageOk === false
+                          ? "бакет не найден — накатите миграцию 004"
+                          : "—"}
+                  </p>
+                  <p className="mt-1.5 flex items-center gap-1.5 text-[12px] font-semibold">
+                    <span
+                      className={cx(
+                        "h-1.5 w-1.5 rounded-full",
+                        rtStatus === "live" ? "bg-ok animate-[pulse-dot_2s_ease-in-out_infinite]"
+                          : rtStatus === "connecting" ? "bg-warn animate-[pulse-dot_1s_ease-in-out_infinite]"
+                          : "bg-mute",
+                      )}
+                    />
+                    <span className={rtStatus === "live" ? "text-ok" : rtStatus === "connecting" ? "text-warn" : "text-mute"}>
+                      Realtime: {rtStatus === "live" ? "онлайн — записи прилетают мгновенно"
+                        : rtStatus === "connecting" ? "подключаемся…"
+                        : cloudUser ? "офлайн — проверьте миграцию 003" : "офлайн — нужен вход в облако"}
+                    </span>
+                  </p>
                   <div className="mt-3 flex flex-wrap gap-2">
                     <Btn size="sm" onClick={doPush} disabled={busy === "push" || !cloudUser}>
                       <Icon name={busy === "push" ? "clock" : "upload"} size={15} />
                       {busy === "push" ? "Отправляем…" : "Отправить в облако"}
                     </Btn>
-                    <Btn size="sm" variant="soft" onClick={doPull} disabled={busy === "pull" || !cloudUser}>
+                    <Btn size="sm" variant="soft" onClick={checkSync} disabled={busy === "sync" || !cloudUser}
+                      title="Найти расхождения с облаком и предложить объединение">
+                      <Icon name={busy === "sync" ? "clock" : "repeat"} size={15} />
+                      {busy === "sync" ? "Проверяем…" : "Синхронизировать"}
+                    </Btn>
+                    <Btn size="sm" variant="ghost" onClick={doPull} disabled={busy === "pull" || !cloudUser}
+                      title="Восстановить локальные данные из резервного снапшота">
                       <Icon name={busy === "pull" ? "clock" : "download"} size={15} />
-                      {busy === "pull" ? "Получаем…" : "Загрузить из облака"}
+                      {busy === "pull" ? "Получаем…" : "Снапшот…"}
                     </Btn>
                   </div>
+
+                  {/* outbox: неотправленные операции */}
+                  <div className={cx(
+                    "mt-3 flex items-center justify-between gap-2 rounded-lg border px-3 py-2",
+                    outboxN > 0 ? "border-warn/40 bg-warn/10" : "border-line bg-raise/40",
+                  )}>
+                    <span className={cx("flex items-center gap-1.5 text-[12px] font-semibold", outboxN > 0 ? "text-warn" : "text-mute")}>
+                      <Icon name={outboxN > 0 ? "clock" : "check"} size={13} />
+                      {outboxN > 0
+                        ? `Не отправлено: ${outboxN} ${outboxN === 1 ? "операция" : outboxN < 5 ? "операции" : "операций"}`
+                        : "Очередь отправки пуста"}
+                    </span>
+                    {outboxN > 0 && (
+                      <Btn size="sm" variant="soft" onClick={doFlush} disabled={busy === "flush" || !cloudUser}
+                        title="Отправить накопленные операции сейчас">
+                        <Icon name={busy === "flush" ? "clock" : "upload"} size={13} />
+                        {busy === "flush" ? "Отправляем…" : "Отправить"}
+                      </Btn>
+                    )}
+                  </div>
                   <p className="mt-2.5 text-[11.5px] leading-relaxed text-mute">
-                    «Загрузить» предложит заменить локальные данные снапшотом — ничего не теряется без подтверждения.
+                    Основная синхронизация — построчная: журнал, чат и активности сливаются по id,
+                    ничего не затирая. Снапшот — резервная копия на случай полной потери данных.
                   </p>
                 </div>
 
@@ -742,6 +852,61 @@ function CloudPanel() {
             </Btn>
           </div>
         </div>
+      </Modal>
+
+      {/* merge-диалог: расхождения с облаком */}
+      <Modal open={!!divergence} onClose={() => !merging && setDivergence(null)} title="Обнаружены расхождения">
+        {divergence && (
+          <div className="p-6">
+            <p className="text-[13.5px] leading-relaxed text-mute">
+              Локальные данные и облако разошлись. Слияние безопасно: строки объединяются по id,
+              ничего не удаляется и не затирается.
+            </p>
+
+            <div className="mt-4 grid gap-3 sm:grid-cols-2">
+              <div className="rounded-xl border border-accent/35 bg-accent-soft p-4">
+                <p className="flex items-center gap-2 font-display text-[13px] font-bold text-accent">
+                  <Icon name="download" size={16} />Из облака — к вам
+                </p>
+                {divergenceTotal(divergence.incoming) === 0
+                  ? <p className="mt-2 text-[12.5px] text-mute">Новых строк нет</p>
+                  : <ul className="mt-2 space-y-1 text-[12.5px] font-medium text-ink">
+                      {divergence.incoming.pets > 0 && <li>Питомцы: +{divergence.incoming.pets}</li>}
+                      {divergence.incoming.acts > 0 && <li>Активности: +{divergence.incoming.acts}</li>}
+                      {divergence.incoming.logs > 0 && <li>Записи журнала: +{divergence.incoming.logs}</li>}
+                      {divergence.incoming.chat > 0 && <li>Сообщения чата: +{divergence.incoming.chat}</li>}
+                      {divergence.incoming.events > 0 && <li>Вет-события: +{divergence.incoming.events}</li>}
+                    </ul>}
+              </div>
+
+              <div className="rounded-xl border border-sage/35 p-4" style={{ background: "color-mix(in oklab, var(--sage) 12%, transparent)" }}>
+                <p className="flex items-center gap-2 font-display text-[13px] font-bold text-sage">
+                  <Icon name="upload" size={16} />От вас — в облако
+                </p>
+                {divergenceTotal(divergence.outgoing) === 0
+                  ? <p className="mt-2 text-[12.5px] text-mute">Всё уже отправлено</p>
+                  : <ul className="mt-2 space-y-1 text-[12.5px] font-medium text-ink">
+                      {divergence.outgoing.acts > 0 && <li>Активности: +{divergence.outgoing.acts}</li>}
+                      {divergence.outgoing.logs > 0 && <li>Записи журнала: +{divergence.outgoing.logs}</li>}
+                      {divergence.outgoing.chat > 0 && <li>Сообщения чата: +{divergence.outgoing.chat}</li>}
+                      {divergence.outgoing.events > 0 && <li>Вет-события: +{divergence.outgoing.events}</li>}
+                    </ul>}
+              </div>
+            </div>
+
+            <p className="mt-4 text-[12px] leading-relaxed text-mute">
+              «Объединить» добавит недостающее из облака и отправит ваши локальные строки обратно.
+            </p>
+
+            <div className="mt-5 flex justify-end gap-2.5">
+              <Btn variant="ghost" onClick={() => setDivergence(null)} disabled={merging}>Позже</Btn>
+              <Btn onClick={doMerge} disabled={merging}>
+                <Icon name={merging ? "clock" : "repeat"} size={15} />
+                {merging ? "Объединяем…" : "Объединить и отправить"}
+              </Btn>
+            </div>
+          </div>
+        )}
       </Modal>
     </Reveal>
   );

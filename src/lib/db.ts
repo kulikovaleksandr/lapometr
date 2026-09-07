@@ -1,5 +1,5 @@
 import {
-  ActivityDef, DB, IconName, LogEntry, Pet, TelegramCfg, ThemeId, User,
+  ActivityDef, DB, IconName, LogEntry, Pet, SCHEMA_VERSION, TelegramCfg, ThemeId, User,
   VetEvent, VetKind, hashPass, uid,
 } from "./types";
 import { AVATAR_COLORS, buildDemoDB, defaultActs, DEMO_EMAIL } from "./data";
@@ -9,19 +9,54 @@ const SES_KEY = "lapometr.session.v1";
 const THEME_KEY = "lapometr.theme.v1";
 const NOTIF_KEY = "lapometr.notif.v1";
 
+/* ==================================================================
+   МИГРАЦИИ ЛОКАЛЬНОЙ СХЕМЫ
+   Реестр апгрейдов: MIGRATIONS[i] переводит БД версии (i + 1) на (i + 2).
+   Каждая функция идемпотентна и оборонительна (добавляет поле, только если
+   его нет), поэтому корректно работает и с данными, чей номер версии не
+   обновлялся вовремя. loadDB() накатывает всю цепочку и сохраняет результат.
+   ================================================================== */
+
+type Migrator = (db: DB) => void;
+
+const MIGRATIONS: Migrator[] = [
+  /* v1 -> v2: появился чат хозяев */
+  (db) => { if (!Array.isArray(db.chat)) db.chat = []; },
+  /* v2 -> v3: появились события вет-календаря */
+  (db) => { if (!Array.isArray(db.events)) db.events = []; },
+];
+
+/**
+ * Накатывает цепочку апгрейдов до SCHEMA_VERSION.
+ * Возвращает true, если данные были изменены (нужно пересохранить).
+ */
+export function migrateDB(db: DB): boolean {
+  let v = typeof db.v === "number" && db.v >= 1 ? db.v : 1;
+  if (v >= SCHEMA_VERSION) return false;
+  while (v < SCHEMA_VERSION) {
+    MIGRATIONS[v - 1]?.(db);
+    v += 1;
+  }
+  db.v = SCHEMA_VERSION;
+  return true;
+}
+
+/** Чистая пустая БД актуальной версии */
+export const emptyDB = (): DB =>
+  ({ v: SCHEMA_VERSION, users: [], pets: [], acts: [], logs: [], chat: [], events: [] });
+
 export function loadDB(): DB {
   try {
     const raw = localStorage.getItem(DB_KEY);
     if (raw) {
       const db = JSON.parse(raw) as DB;
       if (db && Array.isArray(db.users) && Array.isArray(db.logs)) {
-        if (!Array.isArray(db.chat)) db.chat = []; // миграция со старых версий
-        if (!Array.isArray(db.events)) db.events = [];
+        if (migrateDB(db)) saveDB(db); // фиксируем новую версию схемы
         return db;
       }
     }
   } catch { /* повреждённые данные — начинаем заново */ }
-  return { v: 1, users: [], pets: [], acts: [], logs: [], chat: [], events: [] };
+  return emptyDB();
 }
 
 export function saveDB(db: DB) {
@@ -232,7 +267,7 @@ export function ensureDemo(existing: DB): { db: DB; user: User } {
   if (found) return { db: existing, user: found };
   const demo = buildDemoDB();
   const db: DB = {
-    v: 1,
+    v: SCHEMA_VERSION,
     users: [...existing.users, ...demo.users],
     pets: [...existing.pets, ...demo.pets],
     acts: [...existing.acts, ...demo.acts],
