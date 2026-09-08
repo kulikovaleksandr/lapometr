@@ -14,6 +14,7 @@ import {
 } from "../lib/db";
 import { markSent, tgSend, wasSent } from "../lib/telegram";
 import { setUserContext, clearUserContext } from "../lib/monitoring";
+import type { WeightEntry } from "../lib/types";
 import { generateVetEventsForPet } from "../lib/vet-schedule";
 import {
   cloudClaimInvite, cloudCurrentUser, cloudDeletePhotoUrls, cloudFetchDisplays,
@@ -35,6 +36,12 @@ export interface NewActInput {
 export interface VetInput {
   title: string; kind: VetKind; date: string; time?: string;
   repeat: VetEvent["repeat"]; note?: string;
+}
+
+export interface WeightInput {
+  weight: number;
+  date: string;
+  note?: string;
 }
 
 interface Ctx {
@@ -65,6 +72,9 @@ interface Ctx {
   addEvent: (input: VetInput) => string | null;
   updateEvent: (id: string, patch: Partial<VetEvent>) => void;
   deleteEvent: (id: string) => void;
+  addWeight: (input: WeightInput) => string | null;
+  updateWeight: (id: string, patch: Partial<WeightEntry>) => void;
+  deleteWeight: (id: string) => void;
   regenerateVetSchedule: () => void;
   setTg: (patch: Partial<TelegramCfg>) => void;
   addAct: (input: NewActInput) => string | null;
@@ -816,6 +826,42 @@ export function AppProvider({ children }: { children: ReactNode }) {
     toast("Событие удалено", "warn");
   };
 
+  const addWeight: Ctx["addWeight"] = (input) => {
+    if (!pet) return "Нет выбранного питомца";
+    if (input.weight <= 0) return "Вес должен быть больше 0";
+    if (!input.date) return "Укажите дату";
+    
+    const w: WeightEntry = {
+      id: uid(),
+      petId: pet.id,
+      weight: input.weight,
+      date: input.date,
+      note: input.note,
+    };
+    const d = structuredClone(db);
+    d.weights.push(w);
+    commit(d);
+    toast(`Вес ${input.weight} кг записан`, "ok");
+    return null;
+  };
+
+  const updateWeight = (id: string, patch: Partial<WeightEntry>) => {
+    const d = structuredClone(db);
+    const w = d.weights.find((w) => w.id === id);
+    if (w) {
+      Object.assign(w, patch);
+      commit(d);
+      toast("Запись обновлена", "ok");
+    }
+  };
+
+  const deleteWeight = (id: string) => {
+    const d = structuredClone(db);
+    d.weights = d.weights.filter((w) => w.id !== id);
+    commit(d);
+    toast("Запись удалена", "warn");
+  };
+
   const setTg = (patch: Partial<TelegramCfg>) => {
     const next = { ...tg, ...patch };
     setTgState(next);
@@ -912,6 +958,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setTheme, toast, dismissToast, toggleNotif, exportData, resetAll, replaceDb,
     userPets, setActivePet, chat, sendMessage,
     events, tg, setTg, addEvent, updateEvent, deleteEvent, regenerateVetSchedule,
+    addWeight, updateWeight, deleteWeight,
     cloudUser, rtStatus, syncFromCloud,
     fetchDivergence, applyMerge, flushOutboxNow, outboxN,
   };

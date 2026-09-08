@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { useApp, VetInput } from "../state/AppContext";
 import { Btn, EmptyState, Field, Modal, Reveal, Seg, cx, inputCls } from "../components/ui";
 import { Icon } from "../components/icons";
+import { WeightTracker } from "../components/WeightTracker";
 import {
   DAY, REPEAT_LABEL, VET_KINDS, dueLabel, nextOccurrence, startOfDay, vetKind,
 } from "../lib/db";
@@ -305,6 +306,11 @@ export function VetScreen() {
           </div>
         </div>
       </Modal>
+
+      {/* Трекер веса */}
+      <Reveal>
+        <WeightTracker />
+      </Reveal>
 
       <EventModal key={edit === "new" ? "new" : edit?.id ?? "none"} ev={edit} onClose={() => setEdit(null)} />
     </div>

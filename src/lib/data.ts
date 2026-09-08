@@ -155,5 +155,17 @@ export function buildDemoDB(): DB {
   ];
 
   logs.sort((a, b) => a.at - b.at);
-  return { v: SCHEMA_VERSION, users: [u1, u2], pets: [pet, pet2], acts: [...acts, ...acts2], logs, chat: [], events, weights: [], expenses: [] };
+
+  // Демо-данные веса
+  const weights = [
+    { id: uid(), petId: pet.id, weight: 4.2, date: '2024-01-15', note: 'Первое взвешивание' },
+    { id: uid(), petId: pet.id, weight: 4.3, date: '2024-02-15', note: '' },
+    { id: uid(), petId: pet.id, weight: 4.5, date: '2024-03-15', note: 'Набор веса' },
+    { id: uid(), petId: pet.id, weight: 4.4, date: '2024-04-15', note: '' },
+    { id: uid(), petId: pet2.id, weight: 0.09, date: '2024-01-20', note: 'Первое взвешивание' },
+    { id: uid(), petId: pet2.id, weight: 0.095, date: '2024-02-20', note: '' },
+    { id: uid(), petId: pet2.id, weight: 0.1, date: '2024-03-20', note: 'Рост' },
+  ];
+
+  return { v: SCHEMA_VERSION, users: [u1, u2], pets: [pet, pet2], acts: [...acts, ...acts2], logs, chat: [], events, weights, expenses: [] };
 }
