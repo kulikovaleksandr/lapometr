@@ -14,6 +14,7 @@ import {
 } from "../lib/db";
 import { markSent, tgSend, wasSent } from "../lib/telegram";
 import { setUserContext, clearUserContext } from "../lib/monitoring";
+import { generateVetEventsForPet } from "../lib/vet-schedule";
 import {
   cloudClaimInvite, cloudCurrentUser, cloudDeletePhotoUrls, cloudFetchDisplays,
   cloudFetchPetBundle, cloudFullPush, cloudRowFetch, cloudSendDiff, cloudTouchAccess,
@@ -64,6 +65,7 @@ interface Ctx {
   addEvent: (input: VetInput) => string | null;
   updateEvent: (id: string, patch: Partial<VetEvent>) => void;
   deleteEvent: (id: string) => void;
+  regenerateVetSchedule: () => void;
   setTg: (patch: Partial<TelegramCfg>) => void;
   addAct: (input: NewActInput) => string | null;
   updateAct: (id: string, patch: Partial<ActivityDef>) => void;
@@ -486,9 +488,32 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const d = structuredClone(db);
     d.pets.push(p);
     d.acts.push(...makePetWithActs(p).acts);
+    
+    // Автоматическая генерация ветеринарных событий
+    const vetEvents = generateVetEventsForPet(p);
+    d.events.push(...vetEvents);
+    
     commit(d);
     setActivePet(p.id);
     if (userPets.length > 0) toast(`${p.name} теперь в вашей стае`);
+    if (vetEvents.length > 0) toast(`Создан график прививок: ${vetEvents.length} событий`, "ok");
+  };
+
+  /** Обновление графика прививок для текущего питомца */
+  const regenerateVetSchedule = () => {
+    if (!pet) return;
+    
+    const d = structuredClone(db);
+    
+    // Удаляем старые ветеринарные события для этого питомца
+    d.events = d.events.filter(e => e.petId !== pet.id);
+    
+    // Генерируем новые события на основе текущего возраста питомца
+    const newEvents = generateVetEventsForPet(pet);
+    d.events.push(...newEvents);
+    
+    commit(d);
+    toast(`График прививок обновлён: ${newEvents.length} событий`, "ok");
   };
 
   /** base64-фото → Supabase Storage → ссылка в logs.img (локально и в облаке) */
@@ -886,7 +911,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     addAct, updateAct, deleteAct, regenInvite, joinPet, removeOwner,
     setTheme, toast, dismissToast, toggleNotif, exportData, resetAll, replaceDb,
     userPets, setActivePet, chat, sendMessage,
-    events, tg, setTg, addEvent, updateEvent, deleteEvent,
+    events, tg, setTg, addEvent, updateEvent, deleteEvent, regenerateVetSchedule,
     cloudUser, rtStatus, syncFromCloud,
     fetchDivergence, applyMerge, flushOutboxNow, outboxN,
   };

@@ -36,11 +36,12 @@ function eventsOnMonth(events: VetEvent[], y: number, m: number): Map<number, Ve
 }
 
 export function VetScreen() {
-  const { events, now, pet, acts, logs, db } = useApp();
+  const { events, now, pet, acts, logs, db, regenerateVetSchedule } = useApp();
   const [view, setView] = useState(() => { const d = new Date(); return new Date(d.getFullYear(), d.getMonth(), 1); });
   const [selDay, setSelDay] = useState<number | null>(null);
   const [edit, setEdit] = useState<VetEvent | "new" | null>(null);
   const [generatingPassport, setGeneratingPassport] = useState(false);
+  const [showRegenerateConfirm, setShowRegenerateConfirm] = useState(false);
 
   const y = view.getFullYear(), m = view.getMonth();
   const today = new Date(now);
@@ -113,6 +114,9 @@ export function VetScreen() {
           </p>
         </div>
         <div className="flex gap-2">
+          <Btn variant="ghost" onClick={() => setShowRegenerateConfirm(true)}>
+            <Icon name="repeat" size={16} />Обновить график
+          </Btn>
           <Btn variant="soft" onClick={handleGeneratePassport} disabled={generatingPassport}>
             <Icon name={generatingPassport ? "clock" : "download"} size={16} />
             {generatingPassport ? "Генерация..." : "Ветпаспорт"}
@@ -280,6 +284,27 @@ export function VetScreen() {
           </Reveal>
         </div>
       )}
+
+      {/* модалка подтверждения обновления графика */}
+      <Modal open={showRegenerateConfirm} onClose={() => setShowRegenerateConfirm(false)} title="Обновить график прививок">
+        <div className="space-y-4">
+          <p className="text-[14px] leading-relaxed text-mute">
+            Это действие удалит все текущие ветеринарные события и создаст новые на основе 
+            стандартного графика для вида <b className="text-ink">{pet?.species === "cat" ? "кошка" : pet?.species === "dog" ? "собака" : pet?.species}</b>
+            {pet?.birthday ? ` и даты рождения ${new Date(pet.birthday).toLocaleDateString("ru-RU")}` : ""}.
+          </p>
+          <div className="flex items-start gap-2 rounded-xl bg-warn/10 px-3 py-2.5 text-[12.5px] leading-relaxed text-warn">
+            <Icon name="alert" size={15} className="mt-0.5 shrink-0" />
+            <span>Все добавленные вручную события будут удалены. Это действие нельзя отменить.</span>
+          </div>
+          <div className="flex justify-end gap-2.5 pt-1">
+            <Btn variant="ghost" onClick={() => setShowRegenerateConfirm(false)}>Отмена</Btn>
+            <Btn variant="danger" onClick={() => { regenerateVetSchedule(); setShowRegenerateConfirm(false); }}>
+              <Icon name="repeat" size={16} />Обновить график
+            </Btn>
+          </div>
+        </div>
+      </Modal>
 
       <EventModal key={edit === "new" ? "new" : edit?.id ?? "none"} ev={edit} onClose={() => setEdit(null)} />
     </div>
