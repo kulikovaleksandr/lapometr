@@ -5,6 +5,7 @@ import { Icon } from "../components/icons";
 import {
   DAY, REPEAT_LABEL, VET_KINDS, dueLabel, nextOccurrence, startOfDay, vetKind,
 } from "../lib/db";
+import { generateVetPassport } from "../lib/vet-passport";
 import type { VetEvent, VetKind } from "../lib/types";
 
 const WD = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"];
@@ -35,10 +36,11 @@ function eventsOnMonth(events: VetEvent[], y: number, m: number): Map<number, Ve
 }
 
 export function VetScreen() {
-  const { events, now, pet } = useApp();
+  const { events, now, pet, acts, logs, db } = useApp();
   const [view, setView] = useState(() => { const d = new Date(); return new Date(d.getFullYear(), d.getMonth(), 1); });
   const [selDay, setSelDay] = useState<number | null>(null);
   const [edit, setEdit] = useState<VetEvent | "new" | null>(null);
+  const [generatingPassport, setGeneratingPassport] = useState(false);
 
   const y = view.getFullYear(), m = view.getMonth();
   const today = new Date(now);
@@ -66,6 +68,20 @@ export function VetScreen() {
     () => events.filter((ev) => startOfDay(nextOccurrence(ev, now)) <= now).length,
     [events, now],
   );
+
+  const handleGeneratePassport = async () => {
+    if (!pet) return;
+    setGeneratingPassport(true);
+    try {
+      const petLogs = logs.filter(l => l.petId === pet.id);
+      const petEvents = events.filter(e => e.petId === pet.id);
+      await generateVetPassport(pet, acts, petLogs, petEvents, db.users);
+    } catch (error) {
+      console.error('Ошибка генерации паспорта:', error);
+    } finally {
+      setGeneratingPassport(false);
+    }
+  };
 
   if (!pet) return null;
 
@@ -96,9 +112,15 @@ export function VetScreen() {
               : `${events.length} ${events.length === 1 ? "событие" : events.length < 5 ? "события" : "событий"} · ${dueSoon > 0 ? `${dueSoon} требуют внимания` : "всё по плану"}`}
           </p>
         </div>
-        <Btn onClick={() => setEdit("new")}>
-          <Icon name="plus" size={16} />Добавить событие
-        </Btn>
+        <div className="flex gap-2">
+          <Btn variant="soft" onClick={handleGeneratePassport} disabled={generatingPassport}>
+            <Icon name={generatingPassport ? "clock" : "download"} size={16} />
+            {generatingPassport ? "Генерация..." : "Ветпаспорт"}
+          </Btn>
+          <Btn onClick={() => setEdit("new")}>
+            <Icon name="plus" size={16} />Добавить событие
+          </Btn>
+        </div>
       </header>
 
       {events.length === 0 ? (
