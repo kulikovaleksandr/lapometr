@@ -14,8 +14,16 @@ import {
 } from "../lib/db";
 import { markSent, tgSend, wasSent } from "../lib/telegram";
 import { setUserContext, clearUserContext } from "../lib/monitoring";
-import type { WeightEntry } from "../lib/types";
+import type { WeightEntry, Expense, ExpenseCategory } from "../lib/types";
 import { generateVetEventsForPet } from "../lib/vet-schedule";
+
+export interface ExpenseInput {
+  petId: string;
+  category: ExpenseCategory;
+  amount: number;
+  date: string;
+  description?: string;
+}
 import {
   cloudClaimInvite, cloudCurrentUser, cloudDeletePhotoUrls, cloudFetchDisplays,
   cloudFetchPetBundle, cloudFullPush, cloudRowFetch, cloudSendDiff, cloudTouchAccess,
@@ -75,6 +83,9 @@ interface Ctx {
   addWeight: (input: WeightInput) => string | null;
   updateWeight: (id: string, patch: Partial<WeightEntry>) => void;
   deleteWeight: (id: string) => void;
+  addExpense: (input: ExpenseInput) => string | null;
+  updateExpense: (id: string, patch: Partial<Expense>) => void;
+  deleteExpense: (id: string) => void;
   regenerateVetSchedule: () => void;
   setTg: (patch: Partial<TelegramCfg>) => void;
   addAct: (input: NewActInput) => string | null;
@@ -862,6 +873,45 @@ export function AppProvider({ children }: { children: ReactNode }) {
     toast("Запись удалена", "warn");
   };
 
+  const addExpense = (input: ExpenseInput): string | null => {
+    if (!input.petId) return "Не выбран питомец";
+    if (input.amount <= 0) return "Сумма должна быть больше 0";
+    if (!input.date) return "Укажите дату";
+
+    const expense: Expense = {
+      id: uid(),
+      petId: input.petId,
+      category: input.category,
+      amount: input.amount,
+      date: input.date,
+      description: input.description,
+      createdAt: Date.now(),
+    };
+
+    const d = structuredClone(db);
+    d.expenses.push(expense);
+    commit(d);
+    toast("Расход добавлен", "ok");
+    return null;
+  };
+
+  const updateExpense = (id: string, patch: Partial<Expense>) => {
+    const d = structuredClone(db);
+    const expense = d.expenses.find((e) => e.id === id);
+    if (expense) {
+      Object.assign(expense, patch);
+      commit(d);
+      toast("Расход обновлён", "ok");
+    }
+  };
+
+  const deleteExpense = (id: string) => {
+    const d = structuredClone(db);
+    d.expenses = d.expenses.filter((e) => e.id !== id);
+    commit(d);
+    toast("Расход удалён", "warn");
+  };
+
   const setTg = (patch: Partial<TelegramCfg>) => {
     const next = { ...tg, ...patch };
     setTgState(next);
@@ -959,6 +1009,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     userPets, setActivePet, chat, sendMessage,
     events, tg, setTg, addEvent, updateEvent, deleteEvent, regenerateVetSchedule,
     addWeight, updateWeight, deleteWeight,
+    addExpense, updateExpense, deleteExpense,
     cloudUser, rtStatus, syncFromCloud,
     fetchDivergence, applyMerge, flushOutboxNow, outboxN,
   };
