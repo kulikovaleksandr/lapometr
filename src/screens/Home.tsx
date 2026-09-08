@@ -7,6 +7,7 @@ import {
 } from "../lib/db";
 import { speciesLabel } from "../lib/data";
 import { ActivityDef, levelFor } from "../lib/types";
+import { DailyGoals } from "../components/DailyGoals";
 import type { Tab } from "../App";
 
 export function HomeScreen({ onNav }: { onNav: (t: Tab) => void }) {
@@ -190,6 +191,9 @@ export function HomeScreen({ onNav }: { onNav: (t: Tab) => void }) {
           </section>
         </Reveal>
       </div>
+
+      {/* ---- План на день ---- */}
+      <DailyGoals />
 
       {/* ---- Быстрые активности ---- */}
       <Reveal delay={120}>
