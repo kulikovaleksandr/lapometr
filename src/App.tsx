@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { getSeasonStart, getSeasonEnd, getSeasonInfo, finalizeMonth } from './lib/seasons';
 import type { Pet, SeasonSettings, MonthlyResult, LogEntry, Activity } from './lib/types';
 import { PWAInstallButton } from './components/PWAInstallButton';
+import { NetworkIndicator } from './components/NetworkIndicator';
 
 export default function App() {
   const [demoResult, setDemoResult] = useState<string>('');
@@ -68,10 +69,13 @@ export default function App() {
 
   return (
     <div style={{ padding: '2rem', fontFamily: 'system-ui', maxWidth: '800px', margin: '0 auto' }}>
-      {/* Шапка с кнопкой установки PWA */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+      {/* Шапка с кнопкой установки PWA и индикатором сети */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', gap: '1rem' }}>
         <h1 style={{ color: '#f59e0b', margin: 0 }}>🐾 Лапометр - Краевые случаи</h1>
-        <PWAInstallButton />
+        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+          <NetworkIndicator />
+          <PWAInstallButton />
+        </div>
       </div>
       
       <div style={{ 
