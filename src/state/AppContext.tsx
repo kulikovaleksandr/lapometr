@@ -13,6 +13,7 @@ import {
   saveActivePet, saveDB, saveNotif, saveSession, saveTelegram, saveTheme, startOfDay,
 } from "../lib/db";
 import { markSent, tgSend, wasSent } from "../lib/telegram";
+import { setUserContext, clearUserContext } from "../lib/monitoring";
 import {
   cloudClaimInvite, cloudCurrentUser, cloudDeletePhotoUrls, cloudFetchDisplays,
   cloudFetchPetBundle, cloudFullPush, cloudRowFetch, cloudSendDiff, cloudTouchAccess,
@@ -441,6 +442,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if ("error" in r) return r.error;
     setUserId(r.user.id);
     saveSession(r.user.id);
+    setUserContext({ id: r.user.id, email: r.user.email, name: r.user.name });
     return null;
   };
 
@@ -458,7 +460,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
     saveSession(r.user.id);
   };
 
-  const logout = () => { saveSession(null); setUserId(null); };
+  const logout = () => {
+    saveSession(null);
+    setUserId(null);
+    clearUserContext();
+  };
 
   const updateProfile = (patch: Partial<Pick<User, "name" | "color" | "img">>) => {
     if (!user) return;

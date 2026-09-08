@@ -13,6 +13,7 @@ import { ACT_COLORS, ACT_ICONS, AVATAR_COLORS } from "../lib/data";
 import { fileToAvatar, plural } from "../lib/db";
 import type { ActivityDef, IconName } from "../lib/types";
 import { THEMES } from "../lib/types";
+import { getRecentErrors, subscribeErrors } from "../lib/monitoring";
 
 const remindLabel = (h: number) =>
   h === 0 ? "выключено"
@@ -196,6 +197,9 @@ export function SettingsScreen({ onCopy }: { onCopy: (code: string) => void }) {
 
         {/* ---- Telegram ---- */}
         <TelegramCard />
+
+        {/* ---- Мониторинг ---- */}
+        <MonitoringCard />
 
         {/* ---- Облако и синхронизация ---- */}
         <div className="lg:col-span-2">
@@ -493,6 +497,114 @@ function TelegramCard() {
         <p className="mt-3 text-[11.5px] leading-relaxed text-mute">
           Токен и id хранятся только в этом браузере; сообщения уходят напрямую
           с вашего устройства в Telegram Bot API. Каждое напоминание приходит один раз.
+        </p>
+      </section>
+    </Reveal>
+  );
+}
+
+/* ================= Мониторинг ================= */
+
+function MonitoringCard() {
+  const [errors, setErrors] = useState(getRecentErrors());
+  const [showErrors, setShowErrors] = useState(false);
+
+  useEffect(() => {
+    const unsubscribe = subscribeErrors((newErrors) => {
+      setErrors(newErrors);
+    });
+    return unsubscribe;
+  }, []);
+
+  const sentryEnabled = !!import.meta.env.VITE_SENTRY_DSN;
+  const plausibleEnabled = !!import.meta.env.VITE_PLAUSIBLE_DOMAIN;
+
+  return (
+    <Reveal delay={70}>
+      <section className="card p-6">
+        <h3 className="mb-1 flex items-center gap-2 font-display text-[16px] font-bold">
+          <Icon name="chart" size={18} className="text-accent" />Мониторинг и аналитика
+        </h3>
+        <p className="mb-4 text-[12.5px] leading-relaxed text-mute">
+          Отслеживание ошибок и статистика использования приложения.
+        </p>
+
+        <div className="space-y-3">
+          <div className="flex items-center gap-3 rounded-xl border border-line bg-bg2/50 px-4 py-3">
+            <span className={cx(
+              "inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-md",
+              sentryEnabled ? "bg-ok/20 text-ok" : "bg-line text-mute",
+            )}>
+              {sentryEnabled && <Icon name="check" size={12} />}
+            </span>
+            <span className="flex-1">
+              <span className="block text-[13px] font-bold">Sentry</span>
+              <span className="block text-[11.5px] text-mute">
+                {sentryEnabled ? "отслеживание ошибок активно" : "не настроено"}
+              </span>
+            </span>
+          </div>
+
+          <div className="flex items-center gap-3 rounded-xl border border-line bg-bg2/50 px-4 py-3">
+            <span className={cx(
+              "inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-md",
+              plausibleEnabled ? "bg-ok/20 text-ok" : "bg-line text-mute",
+            )}>
+              {plausibleEnabled && <Icon name="check" size={12} />}
+            </span>
+            <span className="flex-1">
+              <span className="block text-[13px] font-bold">Plausible Analytics</span>
+              <span className="block text-[11.5px] text-mute">
+                {plausibleEnabled ? "приватная аналитика активна" : "не настроено"}
+              </span>
+            </span>
+          </div>
+        </div>
+
+        {errors.length > 0 && (
+          <>
+            <button
+              onClick={() => setShowErrors(!showErrors)}
+              className="mt-4 flex w-full items-center justify-between rounded-xl border border-line bg-bg2/50 px-4 py-3 text-left transition hover:border-mute"
+            >
+              <span className="flex items-center gap-2">
+                <Icon name="alert" size={16} className="text-warn" />
+                <span className="text-[13px] font-bold">Последние ошибки</span>
+                <span className="rounded-full bg-warn/20 px-2 py-0.5 text-[11px] font-bold text-warn">
+                  {errors.length}
+                </span>
+              </span>
+              <Icon name={showErrors ? "chev" : "chev"} size={16} className={cx("text-mute transition-transform", showErrors && "rotate-180")} />
+            </button>
+
+            {showErrors && (
+              <div className="mt-2 space-y-2">
+                {errors.map((error) => (
+                  <div key={error.id} className="rounded-lg border border-line bg-bg2/30 p-3">
+                    <p className="text-[12.5px] font-medium text-ink">{error.message}</p>
+                    <p className="mt-1 text-[11px] text-mute">
+                      {new Date(error.timestamp).toLocaleString("ru-RU")}
+                    </p>
+                    {error.context && Object.keys(error.context).length > 0 && (
+                      <details className="mt-2">
+                        <summary className="cursor-pointer text-[11px] font-medium text-mute hover:text-ink">
+                          Контекст
+                        </summary>
+                        <pre className="mt-1 overflow-x-auto rounded bg-bg2 p-2 text-[10px] text-mute">
+                          {JSON.stringify(error.context, null, 2)}
+                        </pre>
+                      </details>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </>
+        )}
+
+        <p className="mt-3 text-[11.5px] leading-relaxed text-mute">
+          Данные об ошибках отправляются в Sentry только в продакшене.
+          Аналитика использования собирается через Plausible и не содержит персональных данных.
         </p>
       </section>
     </Reveal>

@@ -128,6 +128,45 @@ VITE_PLAUSIBLE_DOMAIN=your-domain.com
 VITE_VAPID_PUBLIC_KEY=your-vapid-public-key
 ```
 
+### Настройка мониторинга
+
+Приложение поддерживает два уровня мониторинга:
+
+#### Sentry (отслеживание ошибок)
+
+1. Создайте проект на [sentry.io](https://sentry.io)
+2. Скопируйте DSN из Settings → Client Keys
+3. Добавьте в `.env`:
+   ```bash
+   VITE_SENTRY_DSN=https://examplePublicKey@o0.ingest.sentry.io/0
+   ```
+4. Пересоберите приложение
+
+**Что отслеживается:**
+- Непойманные исключения JavaScript
+- Ошибки React (через ErrorBoundary)
+- Критические ошибки с контекстом
+
+#### Plausible Analytics (приватная аналитика)
+
+1. Создайте сайт на [plausible.io](https://plausible.io)
+2. Добавьте домен в `.env`:
+   ```bash
+   VITE_PLAUSIBLE_DOMAIN=your-domain.com
+   ```
+3. Добавьте скрипт в `index.html`:
+   ```html
+   <script defer data-domain="${VITE_PLAUSIBLE_DOMAIN}" src="https://plausible.io/js/script.js"></script>
+   ```
+4. Пересоберите приложение
+
+**Что отслеживается:**
+- Просмотры страниц
+- Ключевые действия (отметки активностей, создание питомцев)
+- Без персональных данных
+
+**Примечание:** Мониторинг работает только в продакшене (`import.meta.env.PROD`).
+
 ### Подключение облака Supabase
 
 Приложение поддерживает два варианта подключения облака:
