@@ -63,9 +63,57 @@ export function loadDB(): DB {
   return emptyDB();
 }
 
-export function saveDB(db: DB) {
-  localStorage.setItem(DB_KEY, JSON.stringify(db));
-  window.dispatchEvent(new CustomEvent("lapometr:db"));
+/**
+ * Удаляет фото из самых старых записей журнала для освобождения места.
+ * Возвращает количество удалённых фото.
+ */
+export function trimPhotos(db: DB, maxToRemove: number): number {
+  // Находим все записи с фото
+  const logsWithPhotos = db.logs
+    .filter((l) => l.img)
+    .sort((a, b) => a.at - b.at); // сортируем по дате (старые первые)
+  
+  const toRemove = Math.min(maxToRemove, logsWithPhotos.length);
+  let removed = 0;
+  
+  for (let i = 0; i < toRemove; i++) {
+    const log = logsWithPhotos[i];
+    const idx = db.logs.findIndex((l) => l.id === log.id);
+    if (idx !== -1) {
+      db.logs[idx] = { ...db.logs[idx], img: undefined };
+      removed++;
+    }
+  }
+  
+  return removed;
+}
+
+export function saveDB(db: DB): number {
+  try {
+    localStorage.setItem(DB_KEY, JSON.stringify(db));
+    window.dispatchEvent(new CustomEvent("lapometr:db"));
+    return 0;
+  } catch (e) {
+    if (e instanceof DOMException && e.name === "QuotaExceededError") {
+      // Удаляем до 50 старых фото
+      let removed = trimPhotos(db, 50);
+      try {
+        localStorage.setItem(DB_KEY, JSON.stringify(db));
+        window.dispatchEvent(new CustomEvent("lapometr:db"));
+        return removed;
+      } catch (e2) {
+        if (e2 instanceof DOMException && e2.name === "QuotaExceededError") {
+          // Если не помогло, удаляем ещё 100
+          removed += trimPhotos(db, 100);
+          localStorage.setItem(DB_KEY, JSON.stringify(db));
+          window.dispatchEvent(new CustomEvent("lapometr:db"));
+          return removed;
+        }
+        throw e2;
+      }
+    }
+    throw e;
+  }
 }
 
 /* Сессия — на вкладку (sessionStorage): два хозяина могут сидеть в соседних вкладках */

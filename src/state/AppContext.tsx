@@ -222,10 +222,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const commit = useCallback((d: DB, opts?: { fromCloud?: boolean }) => {
     const prev = dbRef.current;
     lastSaved.current = JSON.stringify(d);
-    saveDB(d);
+    const removed = saveDB(d);
+    if (removed > 0) {
+      toast(`Автоочистка: удалено ${removed} старых фото для освобождения места`, "warn");
+    }
     setDbBoth(d);
     if (!opts?.fromCloud && prev !== d) sendDiff(prev, d);
-  }, [sendDiff, setDbBoth]);
+  }, [sendDiff, setDbBoth, toast]);
 
   /* привязка локального аккаунта к облачному (cloudId) */
   useEffect(() => {
@@ -846,7 +849,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
   /** Полная замена БД (загрузка снапшота из облака) */
   const replaceDb = (next: DB) => {
     lastSaved.current = JSON.stringify(next);
-    saveDB(next);
+    const removed = saveDB(next);
+    if (removed > 0) {
+      toast(`Автоочистка: удалено ${removed} старых фото для освобождения места`, "warn");
+    }
     setDbBoth(next);
     if (userId && next.users.some((u) => u.id === userId)) {
       toast("Данные из облака загружены", "ok");
