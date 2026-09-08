@@ -138,6 +138,8 @@ export interface User {
 }
 
 // Расширенный Pet
+export type UserRole = "owner" | "helper";
+
 export interface Pet {
   id: string;
   name: string;
@@ -147,6 +149,7 @@ export interface Pet {
   color: string;
   img?: string;
   ownerIds: string[];
+  ownerRoles?: Record<string, UserRole>;
   invite: string;
   createdAt: number;
   seasonSettings?: SeasonSettings;

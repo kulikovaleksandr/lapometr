@@ -14,7 +14,7 @@ import {
 } from "../lib/db";
 import { markSent, tgSend, wasSent } from "../lib/telegram";
 import { setUserContext, clearUserContext } from "../lib/monitoring";
-import type { WeightEntry, Expense, ExpenseCategory } from "../lib/types";
+import type { WeightEntry, Expense, ExpenseCategory, UserRole } from "../lib/types";
 import { generateVetEventsForPet } from "../lib/vet-schedule";
 
 export interface ExpenseInput {
@@ -86,6 +86,9 @@ interface Ctx {
   addExpense: (input: ExpenseInput) => string | null;
   updateExpense: (id: string, patch: Partial<Expense>) => void;
   deleteExpense: (id: string) => void;
+  getUserRole: (userId: string) => UserRole;
+  setUserRole: (userId: string, role: UserRole) => void;
+  canEditActivities: () => boolean;
   regenerateVetSchedule: () => void;
   setTg: (patch: Partial<TelegramCfg>) => void;
   addAct: (input: NewActInput) => string | null;
@@ -912,6 +915,29 @@ export function AppProvider({ children }: { children: ReactNode }) {
     toast("Расход удалён", "warn");
   };
 
+  // Функции управления ролями
+  const getUserRole = (userId: string): UserRole => {
+    if (!pet) return "helper";
+    return pet.ownerRoles?.[userId] ?? "owner";
+  };
+
+  const setUserRole = (userId: string, role: UserRole) => {
+    if (!pet) return;
+    const d = structuredClone(db);
+    const p = d.pets.find((p) => p.id === pet!.id);
+    if (p) {
+      if (!p.ownerRoles) p.ownerRoles = {};
+      p.ownerRoles[userId] = role;
+      commit(d);
+      toast(`Роль обновлена: ${role === "owner" ? "Владелец" : "Помощник"}`, "ok");
+    }
+  };
+
+  const canEditActivities = (): boolean => {
+    if (!user || !pet) return false;
+    return getUserRole(user.id) === "owner";
+  };
+
   const setTg = (patch: Partial<TelegramCfg>) => {
     const next = { ...tg, ...patch };
     setTgState(next);
@@ -1010,6 +1036,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     events, tg, setTg, addEvent, updateEvent, deleteEvent, regenerateVetSchedule,
     addWeight, updateWeight, deleteWeight,
     addExpense, updateExpense, deleteExpense,
+    getUserRole, setUserRole, canEditActivities,
     cloudUser, rtStatus, syncFromCloud,
     fetchDivergence, applyMerge, flushOutboxNow, outboxN,
   };
