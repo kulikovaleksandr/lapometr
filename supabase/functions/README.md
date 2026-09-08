@@ -213,6 +213,83 @@ supabase functions logs push-subscribe
 supabase functions logs push-send
 ```
 
+## Серверные напоминания
+
+Edge Function `reminders-send` автоматически собирает просроченные активности и due вет-события, отправляя сводку в Telegram и Web Push **без открытого браузера**.
+
+### Как это работает
+
+1. **Ежечасный запуск** через pg_cron (платный план) или внешний cron (GitHub Actions, cron-job.org)
+2. **Сбор данных** из `sync_snapshots` — просроченные активности и due вет-события
+3. **Отправка сводки** в Telegram и через Web Push
+
+Пример уведомления:
+```
+🐾 Лапометр: пора позаботиться
+
+• Булка: «Покормить» — просрочено на 3 ч
+• Булка: «Прививка» — сегодня в 15:00
+
+Отметьте выполнение в журнале!
+```
+
+### Настройка
+
+**Для платного плана Supabase (с pg_cron):**
+
+1. Включите pg_cron в Supabase Dashboard → Database → Extensions
+2. Выполните миграцию `006_pg_cron_reminders.sql`
+3. Замените `YOUR_PROJECT_ID` и `YOUR_SERVICE_ROLE_KEY` в миграции
+4. Задеплойте функцию:
+   ```bash
+   supabase functions deploy reminders-send
+   ```
+
+**Для бесплатного плана (внешний cron):**
+
+Используйте GitHub Actions workflow `.github/workflows/reminders-cron.yml`:
+
+1. Добавьте секреты в GitHub → Settings → Secrets:
+   - `SUPABASE_URL`
+   - `SUPABASE_SERVICE_ROLE_KEY`
+2. Workflow запускается автоматически каждый час
+
+Альтернативы: cron-job.org, системный cron (скрипт `supabase/functions/external-cron.sh`)
+
+### Деплой функции
+
+```bash
+supabase functions deploy reminders-send
+```
+
+### Тестирование
+
+```bash
+curl -X POST https://your-project.supabase.co/functions/v1/reminders-send \
+  -H "Authorization: Bearer YOUR_SERVICE_ROLE_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{}'
+```
+
+Ответ:
+```json
+{
+  "success": true,
+  "sent": 2,
+  "users": 1
+}
+```
+
+### Ограничения
+
+- **pg_cron** доступен только на платных планах Supabase (Pro и выше)
+- На бесплатном плане используйте внешний cron (GitHub Actions, cron-job.org)
+- Функция читает `sync_snapshots` — клиенты должны хотя бы раз синхронизироваться с облаком
+- Telegram-напоминания работают только если пользователь настроил Telegram в приложении
+- Web Push требует настроенных VAPID ключей и подписки клиента
+
+---
+
 ## Ограничения
 
 - Web Push работает только в браузерах с поддержкой Service Workers (Chrome, Firefox, Edge, Safari 16.4+)

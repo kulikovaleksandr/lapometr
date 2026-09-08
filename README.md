@@ -213,6 +213,45 @@ VITE_SUPABASE_FUNCTIONS_URL=https://your-project.supabase.co
 
 Подробная документация: [`supabase/functions/README.md`](supabase/functions/README.md)
 
+### Серверные напоминания
+
+Edge Function `reminders-send` автоматически собирает просроченные активности и due вет-события, отправляя сводку в Telegram и Web Push **без открытого браузера**.
+
+#### Настройка
+
+**Для платного плана Supabase (с pg_cron):**
+
+1. Включите pg_cron в Supabase Dashboard → Database → Extensions
+2. Выполните миграцию `006_pg_cron_reminders.sql`
+3. Задеплойте функцию:
+   ```bash
+   supabase functions deploy reminders-send
+   ```
+
+**Для бесплатного плана (внешний cron):**
+
+Используйте GitHub Actions workflow `.github/workflows/reminders-cron.yml`:
+
+1. Добавьте секреты в GitHub → Settings → Secrets:
+   - `SUPABASE_URL`
+   - `SUPABASE_SERVICE_ROLE_KEY`
+2. Workflow запускается автоматически каждый час
+
+Альтернативы: cron-job.org, системный cron (скрипт `supabase/functions/external-cron.sh`)
+
+#### Пример уведомления
+
+```
+🐾 Лапометр: пора позаботиться
+
+• Булка: «Покормить» — просрочено на 3 ч
+• Булка: «Прививка» — сегодня в 15:00
+
+Отметьте выполнение в журнале!
+```
+
+Подробная документация: [`supabase/functions/README.md`](supabase/functions/README.md)
+
 ### Подключение облака Supabase
 
 Приложение поддерживает два варианта подключения облака:
