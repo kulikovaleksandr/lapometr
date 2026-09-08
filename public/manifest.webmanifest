@@ -1,0 +1,43 @@
+{
+  "name": "Лапометр — журнал заботы о питомце",
+  "short_name": "Лапометр",
+  "description": "Журнал ухода за питомцем: активности, лапки, напоминания и честная дуэль хозяев",
+  "id": "lapometr",
+  "lang": "ru",
+  "dir": "ltr",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "display_override": ["standalone", "minimal-ui"],
+  "orientation": "any",
+  "background_color": "#211a14",
+  "theme_color": "#211a14",
+  "categories": ["lifestyle", "productivity"],
+  "icons": [
+    { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" },
+    { "src": "/icon.svg", "sizes": "512x512", "type": "image/svg+xml", "purpose": "maskable" }
+  ],
+  "shortcuts": [
+    {
+      "name": "Журнал",
+      "short_name": "Журнал",
+      "description": "Хроника заботы",
+      "url": "/?tab=journal",
+      "icons": [{ "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml" }]
+    },
+    {
+      "name": "Дуэль хозяев",
+      "short_name": "Дуэль",
+      "description": "Кто лучше заботится?",
+      "url": "/?tab=duel",
+      "icons": [{ "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml" }]
+    },
+    {
+      "name": "Статистика",
+      "short_name": "Статистика",
+      "description": "Разрезы заботы",
+      "url": "/?tab=stats",
+      "icons": [{ "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml" }]
+    }
+  ]
+}
