@@ -24,6 +24,10 @@ const MIGRATIONS: Migrator[] = [
   (db) => { if (!Array.isArray(db.chat)) db.chat = []; },
   /* v2 -> v3: появились события вет-календаря */
   (db) => { if (!Array.isArray(db.events)) db.events = []; },
+  /* v3 -> v4: появились записи веса */
+  (db) => { if (!Array.isArray(db.weights)) db.weights = []; },
+  /* v4 -> v5: появились записи расходов */
+  (db) => { if (!Array.isArray(db.expenses)) db.expenses = []; },
 ];
 
 /**
@@ -43,7 +47,7 @@ export function migrateDB(db: DB): boolean {
 
 /** Чистая пустая БД актуальной версии */
 export const emptyDB = (): DB =>
-  ({ v: SCHEMA_VERSION, users: [], pets: [], acts: [], logs: [], chat: [], events: [] });
+  ({ v: SCHEMA_VERSION, users: [], pets: [], acts: [], logs: [], chat: [], events: [], weights: [], expenses: [] });
 
 export function loadDB(): DB {
   try {
@@ -274,6 +278,8 @@ export function ensureDemo(existing: DB): { db: DB; user: User } {
     logs: [...existing.logs, ...demo.logs],
     chat: [...existing.chat, ...demo.chat],
     events: [...existing.events, ...demo.events],
+    weights: [...(existing.weights || []), ...(demo.weights || [])],
+    expenses: [...(existing.expenses || []), ...(demo.expenses || [])],
   };
   return { db, user: demo.users[0] };
 }

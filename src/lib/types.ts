@@ -175,6 +175,6 @@ export interface DB {
   logs: LogEntry[];
   chat: ChatMessage[];
   events: VetEvent[];
-  weights?: WeightEntry[];
-  expenses?: Expense[];
+  weights: WeightEntry[];
+  expenses: Expense[];
 }

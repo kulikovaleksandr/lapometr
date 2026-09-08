@@ -155,5 +155,5 @@ export function buildDemoDB(): DB {
   ];
 
   logs.sort((a, b) => a.at - b.at);
-  return { v: SCHEMA_VERSION, users: [u1, u2], pets: [pet, pet2], acts: [...acts, ...acts2], logs, chat: [], events };
+  return { v: SCHEMA_VERSION, users: [u1, u2], pets: [pet, pet2], acts: [...acts, ...acts2], logs, chat: [], events, weights: [], expenses: [] };
 }
