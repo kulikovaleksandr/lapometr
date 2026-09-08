@@ -165,3 +165,16 @@ export interface LogEntry {
 }
 
 export const SCHEMA_VERSION = 5;
+
+// База данных
+export interface DB {
+  v: number;
+  users: User[];
+  pets: Pet[];
+  acts: ActivityDef[];
+  logs: LogEntry[];
+  chat: ChatMessage[];
+  events: VetEvent[];
+  weights?: WeightEntry[];
+  expenses?: Expense[];
+}
