@@ -9,6 +9,7 @@ import { VetScreen } from './screens/Vet';
 import { StatsScreen } from './screens/Stats';
 import { SettingsScreen } from './screens/Settings';
 import { PetForm } from './components/PetForm';
+import { AchievementsPanel } from './components/AchievementsPanel';
 import { Modal, Btn } from './components/ui';
 import { Icon } from './components/icons';
 import { PWAInstallButton } from './components/PWAInstallButton';
@@ -16,7 +17,7 @@ import { NetworkIndicator } from './components/NetworkIndicator';
 import { nextOccurrence, startOfDay } from './lib/db';
 import type { Pet } from './lib/types';
 
-type Screen = 'auth' | 'onboarding' | 'home' | 'journal' | 'duel' | 'vet' | 'stats' | 'settings';
+type Screen = 'auth' | 'onboarding' | 'home' | 'journal' | 'duel' | 'vet' | 'achievements' | 'stats' | 'settings';
 
 interface NavButtonProps {
   active: boolean;
@@ -196,6 +197,12 @@ function AppContent() {
           badge={dueSoonCount > 0 ? dueSoonCount : undefined}
         />
         <NavButton 
+          active={screen === 'achievements'} 
+          onClick={() => setScreen('achievements')}
+          icon="trophy"
+          label="Ачивки"
+        />
+        <NavButton 
           active={screen === 'stats'} 
           onClick={() => setScreen('stats')}
           icon="chart"
@@ -215,6 +222,7 @@ function AppContent() {
         {screen === 'journal' && <JournalScreen />}
         {screen === 'duel' && <DuelScreen onCopy={() => {}} />}
         {screen === 'vet' && <VetScreen />}
+        {screen === 'achievements' && <AchievementsPanel />}
         {screen === 'stats' && <StatsScreen />}
         {screen === 'settings' && <SettingsScreen onCopy={() => {}} />}
       </main>
