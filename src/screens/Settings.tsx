@@ -198,6 +198,9 @@ export function SettingsScreen({ onCopy }: { onCopy: (code: string) => void }) {
         {/* ---- Telegram ---- */}
         <TelegramCard />
 
+        {/* ---- Web Push ---- */}
+        <WebPushCard />
+
         {/* ---- Мониторинг ---- */}
         <MonitoringCard />
 
@@ -504,6 +507,143 @@ function TelegramCard() {
 }
 
 /* ================= Мониторинг ================= */
+
+function WebPushCard() {
+  const { user, toast } = useApp();
+  const [enabled, setEnabled] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [supported, setSupported] = useState(true);
+
+  useEffect(() => {
+    const checkSupport = async () => {
+      const { isPushSupported, getPermissionStatus } = await import("../lib/web-push");
+      const isSupported = isPushSupported();
+      setSupported(isSupported);
+      
+      if (isSupported) {
+        const permission = getPermissionStatus();
+        setEnabled(permission === "granted");
+      }
+    };
+    checkSupport();
+  }, []);
+
+  const handleToggle = async () => {
+    if (!user) {
+      toast("Сначала войдите в аккаунт", "err");
+      return;
+    }
+
+    if (!supported) {
+      toast("Web Push не поддерживается вашим браузером", "err");
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const { subscribe, unsubscribe } = await import("../lib/web-push");
+      
+      if (enabled) {
+        await unsubscribe(user.id);
+        setEnabled(false);
+        toast("Push-уведомления отключены", "ok");
+      } else {
+        const vapidKey = import.meta.env.VITE_VAPID_PUBLIC_KEY;
+        if (!vapidKey) {
+          toast("VAPID ключ не настроен", "err");
+          return;
+        }
+        
+        await subscribe(vapidKey, user.id);
+        setEnabled(true);
+        toast("Push-уведомления включены", "ok");
+      }
+    } catch (error) {
+      console.error("Failed to toggle push:", error);
+      toast("Не удалось изменить настройки push", "err");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleTest = async () => {
+    if (!enabled) {
+      toast("Сначала включите push-уведомления", "warn");
+      return;
+    }
+
+    try {
+      const { sendTestNotification } = await import("../lib/web-push");
+      await sendTestNotification();
+      toast("Тестовое уведомление отправлено", "ok");
+    } catch (error) {
+      console.error("Failed to send test notification:", error);
+      toast("Не удалось отправить тестовое уведомление", "err");
+    }
+  };
+
+  return (
+    <Reveal delay={70}>
+      <section className="card p-6">
+        <h3 className="mb-1 flex items-center gap-2 font-display text-[16px] font-bold">
+          <Icon name="bell" size={18} className="text-accent" />Push-уведомления
+        </h3>
+        <p className="mb-4 text-[12.5px] leading-relaxed text-mute">
+          Получайте напоминания о заботе о питомце даже при закрытой вкладке.
+        </p>
+
+        {!supported ? (
+          <div className="rounded-xl border border-danger/30 bg-danger/10 p-4">
+            <p className="text-[13px] font-medium text-danger">
+              Web Push не поддерживается вашим браузером
+            </p>
+            <p className="mt-1 text-[12px] text-mute">
+              Используйте Chrome, Firefox, Edge или Safari 16.4+
+            </p>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            <button
+              onClick={handleToggle}
+              disabled={loading}
+              className="flex w-full items-center gap-3 rounded-xl border border-line bg-bg2/50 px-4 py-3 text-left transition hover:border-mute disabled:opacity-50"
+            >
+              <span className={cx(
+                "relative h-6 w-11 shrink-0 rounded-full transition-colors",
+                enabled ? "bg-accent" : "bg-line",
+              )}>
+                <span className={cx(
+                  "absolute top-0.5 h-5 w-5 rounded-full bg-surface shadow transition-all",
+                  enabled ? "left-[22px]" : "left-0.5",
+                )} />
+              </span>
+              <span className="flex-1">
+                <span className="block text-[13.5px] font-bold">
+                  {loading ? "Загрузка..." : enabled ? "Включены" : "Выключены"}
+                </span>
+                <span className="block text-[12px] text-mute">
+                  {enabled ? "Уведомления активны" : "Нажмите для включения"}
+                </span>
+              </span>
+              <Icon name={enabled ? "check" : "x"} size={17} className={enabled ? "text-ok" : "text-mute"} />
+            </button>
+
+            {enabled && (
+              <Btn variant="soft" size="sm" onClick={handleTest}>
+                <Icon name="bell" size={14} />Отправить тестовое уведомление
+              </Btn>
+            )}
+
+            <p className="text-[11.5px] leading-relaxed text-mute">
+              Уведомления работают через Service Worker и не требуют открытой вкладки.
+              Вы можете отключить их в любой момент.
+            </p>
+          </div>
+        )}
+      </section>
+    </Reveal>
+  );
+}
 
 function MonitoringCard() {
   const [errors, setErrors] = useState(getRecentErrors());

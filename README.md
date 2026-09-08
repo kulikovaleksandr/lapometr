@@ -167,6 +167,52 @@ VITE_VAPID_PUBLIC_KEY=your-vapid-public-key
 
 **Примечание:** Мониторинг работает только в продакшене (`import.meta.env.PROD`).
 
+### Настройка Web Push уведомлений
+
+Приложение поддерживает Web Push уведомления через VAPID для отправки уведомлений даже при закрытой вкладке.
+
+#### 1. Генерация VAPID ключей
+
+```bash
+npm install -g web-push
+web-push generate-vapid-keys
+```
+
+#### 2. Настройка Supabase
+
+1. Выполните миграцию `supabase/migrations/005_push_subscriptions.sql`
+2. Добавьте секреты в Supabase Dashboard → Settings → Secrets:
+   ```
+   VAPID_PUBLIC_KEY=...
+   VAPID_PRIVATE_KEY=...
+   VAPID_SUBJECT=mailto:your-email@example.com
+   ```
+3. Задеплойте Edge Functions:
+   ```bash
+   supabase functions deploy push-subscribe
+   supabase functions deploy push-send
+   ```
+
+#### 3. Настройка клиента
+
+Добавьте в `.env`:
+```bash
+VITE_VAPID_PUBLIC_KEY=your-vapid-public-key
+VITE_SUPABASE_FUNCTIONS_URL=https://your-project.supabase.co
+```
+
+#### 4. Включение в приложении
+
+В настройках приложения откройте раздел "Push-уведомления" и включите их. Пользователь получит запрос на разрешение уведомлений.
+
+**Особенности:**
+- Уведомления работают через Service Worker
+- Не требуют открытой вкладки
+- Поддерживаются Chrome, Firefox, Edge, Safari 16.4+
+- Для iOS требуется добавление сайта на домашний экран
+
+Подробная документация: [`supabase/functions/README.md`](supabase/functions/README.md)
+
 ### Подключение облака Supabase
 
 Приложение поддерживает два варианта подключения облака:
