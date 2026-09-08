@@ -3,7 +3,7 @@ import { useApp } from "../state/AppContext";
 import {
   clearCloudConfig, cloudCurrentUser, cloudFullPush, cloudPull, cloudSignIn,
   cloudSignInGoogle, cloudSignOut, cloudSignUp, cloudStorageOk, divergenceTotal,
-  lastSyncAt, loadCloudConfig, onCloudAuthChange, saveCloudConfig, testConnection,
+  isEnvCloudConfigured, lastSyncAt, loadCloudConfig, onCloudAuthChange, saveCloudConfig, testConnection,
   type CloudSnapshot, type CloudUser, type Divergence,
 } from "../lib/cloud";
 import { tgTestSend } from "../lib/telegram";
@@ -531,6 +531,7 @@ function CloudPanel() {
   const [storageOk, setStorageOk] = useState<boolean | null>(null);
   const [divergence, setDivergence] = useState<Divergence | null>(null);
   const [merging, setMerging] = useState(false);
+  const isEnv = isEnvCloudConfigured();
 
   useEffect(() => {
     if (!cloudUser) { setStorageOk(null); return; }
@@ -558,9 +559,15 @@ function CloudPanel() {
 
   const disconnect = async () => {
     await cloudSignOut();
-    clearCloudConfig();
-    setCfg(null); setCloudUser(null); setUrl(""); setKey(""); setLastSync(null);
-    toast("Облако отключено, данные остались на устройстве", "warn");
+    if (!isEnv) {
+      clearCloudConfig();
+      setCfg(null);
+      setUrl("");
+      setKey("");
+    }
+    setCloudUser(null);
+    setLastSync(null);
+    toast(isEnv ? "Вы вышли из облачного аккаунта" : "Облако отключено, данные остались на устройстве", "warn");
   };
 
   const auth = async () => {
@@ -661,14 +668,15 @@ function CloudPanel() {
           </span>
         </div>
         <p className="relative mt-1.5 max-w-2xl text-[12.5px] leading-relaxed text-mute">
-          Локальный режим работает всегда. Подключите свой проект Supabase — и лапки, журнал и дуэль
-          будут жить на всех устройствах, а второй хозяин войдёт с телефона через Google или почту.
+          {isEnv
+            ? "Облако настроено через переменные окружения. Войдите в аккаунт для синхронизации между устройствами."
+            : "Локальный режим работает всегда. Подключите свой проект Supabase — и лапки, журнал и дуэль будут жить на всех устройствах, а второй хозяин войдёт с телефона через Google или почту."}
         </p>
 
         <div className="relative mt-5 grid gap-5 lg:grid-cols-2">
           {/* левая колонка: подключение / аккаунт / синк */}
           <div className="space-y-4">
-            {!cfg ? (
+            {!cfg && !isEnv ? (
               <div className="rounded-xl border border-line bg-bg2/50 p-4">
                 <Field label="Project URL" hint="Supabase → Settings → API">
                   <input className={inputCls} value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://xxxx.supabase.co" spellCheck={false} />
@@ -802,7 +810,7 @@ function CloudPanel() {
                 </div>
 
                 <Btn variant="ghost" size="sm" onClick={disconnect}>
-                  <Icon name="x" size={14} />Отключить облако
+                  <Icon name="x" size={14} />{isEnv ? "Выйти из облака" : "Отключить облако"}
                 </Btn>
               </>
             )}
@@ -812,26 +820,51 @@ function CloudPanel() {
 
           {/* правая колонка: инструкция */}
           <div className="rounded-xl border border-dashed border-line p-4">
-            <p className="text-[12px] font-bold uppercase tracking-wider text-mute">Настройка за 4 шага</p>
-            <ol className="mt-3 space-y-3">
-              {[
-                ["Создайте проект на supabase.com (бесплатный план подходит)", null],
-                ["SQL Editor → вставьте supabase/migrations/001_init.sql → Run", "таблицы, RLS, анти-чит лимиты и claim_invite()"],
-                ["Settings → API: скопируйте Project URL и anon key сюда", null],
-                ["Authentication → Providers: включите Email и Google для входа через Google", "нужны Client ID/Secret из Google Cloud Console"],
-              ].map(([s, sub], i) => (
-                <li key={i} className="flex items-start gap-3">
-                  <span className="mt-0.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-accent-soft font-display text-[12px] font-bold text-accent">{i + 1}</span>
-                  <span className="text-[12.5px] leading-relaxed text-mute">
-                    {s}{sub && <span className="block text-[11.5px] text-mute/75">{sub}</span>}
-                  </span>
-                </li>
-              ))}
-            </ol>
-            <p className="mt-4 border-t border-line pt-3 text-[11.5px] leading-relaxed text-mute">
-              Без настройки приложение остаётся полностью рабочим: данные живут на этом устройстве,
-              второй хозяин — через соседнюю вкладку.
-            </p>
+            {isEnv ? (
+              <>
+                <p className="text-[12px] font-bold uppercase tracking-wider text-mute">Облако настроено</p>
+                <p className="mt-3 text-[12.5px] leading-relaxed text-mute">
+                  Supabase подключён через переменные окружения. Войдите в аккаунт, чтобы начать синхронизацию.
+                </p>
+                <ol className="mt-3 space-y-3">
+                  {[
+                    ["Убедитесь, что миграции 001–004 накатаны в SQL Editor", "таблицы, RLS, анти-чит лимиты, Storage и Realtime"],
+                    ["Authentication → Providers: включите Email и Google", "нужны Client ID/Secret из Google Cloud Console"],
+                    ["Войдите или зарегистрируйтесь в форме слева", null],
+                  ].map(([s, sub], i) => (
+                    <li key={i} className="flex items-start gap-3">
+                      <span className="mt-0.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-accent-soft font-display text-[12px] font-bold text-accent">{i + 1}</span>
+                      <span className="text-[12.5px] leading-relaxed text-mute">
+                        {s}{sub && <span className="block text-[11.5px] text-mute/75">{sub}</span>}
+                      </span>
+                    </li>
+                  ))}
+                </ol>
+              </>
+            ) : (
+              <>
+                <p className="text-[12px] font-bold uppercase tracking-wider text-mute">Настройка за 4 шага</p>
+                <ol className="mt-3 space-y-3">
+                  {[
+                    ["Создайте проект на supabase.com (бесплатный план подходит)", null],
+                    ["SQL Editor → вставьте supabase/migrations/001_init.sql → Run", "таблицы, RLS, анти-чит лимиты и claim_invite()"],
+                    ["Settings → API: скопируйте Project URL и anon key сюда", null],
+                    ["Authentication → Providers: включите Email и Google для входа через Google", "нужны Client ID/Secret из Google Cloud Console"],
+                  ].map(([s, sub], i) => (
+                    <li key={i} className="flex items-start gap-3">
+                      <span className="mt-0.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-accent-soft font-display text-[12px] font-bold text-accent">{i + 1}</span>
+                      <span className="text-[12.5px] leading-relaxed text-mute">
+                        {s}{sub && <span className="block text-[11.5px] text-mute/75">{sub}</span>}
+                      </span>
+                    </li>
+                  ))}
+                </ol>
+                <p className="mt-4 border-t border-line pt-3 text-[11.5px] leading-relaxed text-mute">
+                  Без настройки приложение остаётся полностью рабочим: данные живут на этом устройстве,
+                  второй хозяин — через соседнюю вкладку.
+                </p>
+              </>
+            )}
           </div>
         </div>
       </section>
