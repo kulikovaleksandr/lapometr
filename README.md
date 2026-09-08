@@ -111,6 +111,26 @@ npm run build
 npm run preview
 ```
 
+### Тестирование
+
+Проект включает два уровня тестирования:
+
+**Unit-тесты (Vitest):**
+```bash
+npm run test          # Запустить в watch-режиме
+npm run test:ui       # Запустить с UI
+npm run test:coverage # С покрытием кода
+```
+
+**E2E-тесты (Playwright):**
+```bash
+npx playwright install  # Установить браузеры (первый раз)
+npm run test:e2e        # Запустить все e2e тесты
+npm run test:e2e:ui     # Запустить с UI
+```
+
+Подробная документация: [`TESTING.md`](TESTING.md)
+
 ### Переменные окружения
 
 Создайте файл `.env` на основе `.env.example`:
