@@ -11,7 +11,7 @@ import { DailyGoals } from "../components/DailyGoals";
 import type { Tab } from "../App";
 
 export function HomeScreen({ onNav }: { onNav: (t: Tab) => void }) {
-  const { user, pet, acts, logs, owners, now, complete, toast, cloudUser } = useApp();
+  const { user, pet, acts, logs, owners, now, complete, toast, cloudUser, seasonInfo, seasonPawsByUser } = useApp();
   const [sel, setSel] = useState<ActivityDef | null>(null);
   const [burst, setBurst] = useState(0);
   const [photo, setPhoto] = useState<string | undefined>();
@@ -142,6 +142,30 @@ export function HomeScreen({ onNav }: { onNav: (t: Tab) => void }) {
                 </button>
               )}
             </div>
+
+            {/* сезонный баланс */}
+            {seasonInfo.enabled && (
+              <div className="relative mt-4 rounded-xl bg-accent/10 p-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Icon name="trophy" size={16} className="text-accent" />
+                    <span className="text-[12px] font-bold text-accent">
+                      Сезон {new Date(seasonInfo.start).toLocaleDateString("ru-RU", { month: "long" })}
+                    </span>
+                  </div>
+                  <span className="text-[11px] font-medium text-mute">
+                    осталось {seasonInfo.daysLeft} {plural(seasonInfo.daysLeft, "день", "дня", "дней")}
+                  </span>
+                </div>
+                <div className="mt-2 flex items-center gap-2">
+                  <Icon name="paw" size={14} className="text-accent" />
+                  <span className="font-display text-[16px] font-bold text-accent">
+                    <CountUp value={Object.values(seasonPawsByUser).reduce((sum, p) => sum + p, 0)} />
+                  </span>
+                  <span className="text-[11px] text-mute">сезонных лапок</span>
+                </div>
+              </div>
+            )}
           </section>
         </Reveal>
 

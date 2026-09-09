@@ -1,4 +1,4 @@
-import type { Pet, LogEntry, Activity, SeasonSettings, MonthlyResult } from "./types";
+import type { Pet, LogEntry, ActivityDef, SeasonSettings, MonthlyResult } from "./types";
 
 /**
  * Получить настройки сезона для питомца
@@ -85,8 +85,8 @@ export function getSeasonLogs(
 
   return logs.filter(log => 
     log.petId === pet.id &&
-    log.timestamp >= start &&
-    log.timestamp <= end
+    log.at >= start &&
+    log.at <= end
   );
 }
 
@@ -95,7 +95,7 @@ export function getSeasonLogs(
  */
 export function getSeasonPawsByUser(
   logs: LogEntry[],
-  activities: Activity[],
+  activities: ActivityDef[],
   pet: Pet,
   seasonSettings: SeasonSettings,
   now: number = Date.now()
@@ -104,10 +104,10 @@ export function getSeasonPawsByUser(
   const pawsByUser: Record<string, number> = {};
 
   for (const log of seasonLogs) {
-    const activity = activities.find(a => a.id === log.activityId);
+    const activity = activities.find(a => a.id === log.actId);
     if (!activity) continue;
 
-    pawsByUser[log.userId] = (pawsByUser[log.userId] || 0) + activity.paws;
+    pawsByUser[log.ownerId] = (pawsByUser[log.ownerId] || 0) + activity.paws;
   }
 
   return pawsByUser;
@@ -126,7 +126,7 @@ export function getSeasonActivitiesByUser(
   const activitiesByUser: Record<string, number> = {};
 
   for (const log of seasonLogs) {
-    activitiesByUser[log.userId] = (activitiesByUser[log.userId] || 0) + 1;
+    activitiesByUser[log.ownerId] = (activitiesByUser[log.ownerId] || 0) + 1;
   }
 
   return activitiesByUser;
@@ -138,7 +138,7 @@ export function getSeasonActivitiesByUser(
  */
 export function getSeasonWinner(
   logs: LogEntry[],
-  activities: Activity[],
+  activities: ActivityDef[],
   pet: Pet,
   seasonSettings: SeasonSettings,
   now: number = Date.now()
@@ -179,7 +179,7 @@ export function getSeasonWinner(
  */
 export function finalizeMonth(
   logs: LogEntry[],
-  activities: Activity[],
+  activities: ActivityDef[],
   pet: Pet,
   seasonSettings: SeasonSettings,
   existingResults: MonthlyResult[],
@@ -196,23 +196,26 @@ export function finalizeMonth(
   const [year, monthNum] = month.split('-').map(Number);
   const monthStart = new Date(year, monthNum - 1, 1).getTime();
   const monthEnd = new Date(year, monthNum, 0, 23, 59, 59, 999).getTime();
-
+  
+  // Краевой случай: если питомец создан в этом месяце,
+  // учитываем только логи после даты создания
+  const effectiveStart = Math.max(monthStart, pet.createdAt);
+  
   const monthLogs = logs.filter(log =>
     log.petId === pet.id &&
-    log.timestamp >= monthStart &&
-    log.timestamp <= monthEnd
+    log.at >= effectiveStart &&
+    log.at <= monthEnd
   );
-
   // Подсчитываем статистику
   const pawsByUser: Record<string, number> = {};
   const activitiesByUser: Record<string, number> = {};
 
   for (const log of monthLogs) {
-    const activity = activities.find(a => a.id === log.activityId);
+    const activity = activities.find(a => a.id === log.actId);
     if (!activity) continue;
 
-    pawsByUser[log.userId] = (pawsByUser[log.userId] || 0) + activity.paws;
-    activitiesByUser[log.userId] = (activitiesByUser[log.userId] || 0) + 1;
+    pawsByUser[log.ownerId] = (pawsByUser[log.ownerId] || 0) + activity.paws;
+    activitiesByUser[log.ownerId] = (activitiesByUser[log.ownerId] || 0) + 1;
   }
 
   // Определяем победителя
@@ -281,4 +284,43 @@ export function getSeasonInfo(
     daysLeft,
     isLastDay: daysLeft === 1,
   };
+}
+
+/**
+ * Получить результаты по месяцам для питомца
+ */
+export function getMonthlyResults(
+  pet: Pet
+): MonthlyResult[] {
+  return pet.monthlyResults ?? [];
+}
+
+/**
+ * Получить чемпиона года (пользователь с наибольшим количеством побед)
+ */
+export function getYearlyChampion(
+  pet: Pet,
+  year: number
+): string | null {
+  const results = getMonthlyResults(pet);
+  const yearResults = results.filter(r => {
+    const resultYear = parseInt(r.month.split('-')[0]);
+    return resultYear === year;
+  });
+
+  const winsByUser: Record<string, number> = {};
+  for (const result of yearResults) {
+    if (result.winnerId) {
+      winsByUser[result.winnerId] = (winsByUser[result.winnerId] || 0) + 1;
+    }
+  }
+
+  const maxWins = Math.max(0, ...Object.values(winsByUser));
+  if (maxWins === 0) return null;
+
+  const champions = Object.entries(winsByUser)
+    .filter(([_, wins]) => wins === maxWins)
+    .map(([userId]) => userId);
+
+  return champions.length === 1 ? champions[0] : null;
 }

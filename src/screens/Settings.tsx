@@ -13,6 +13,7 @@ import { ACT_COLORS, ACT_ICONS, AVATAR_COLORS } from "../lib/data";
 import { fileToAvatar, plural } from "../lib/db";
 import type { ActivityDef, IconName } from "../lib/types";
 import { THEMES } from "../lib/types";
+import { useI18n } from "../hooks/useI18n";
 import { getRecentErrors, subscribeErrors } from "../lib/monitoring";
 
 const remindLabel = (h: number) =>
@@ -37,7 +38,9 @@ export function SettingsScreen({ onCopy }: { onCopy: (code: string) => void }) {
     user, pet, owners, acts, theme, setTheme, notifOn, toggleNotif,
     updateProfile, regenInvite, joinPet, removeOwner, addAct, updateAct, deleteAct,
     exportData, resetAll, toast, tg, setTg, getUserRole, setUserRole, canEditActivities,
+    updateSeasonSettings, seasonInfo, finalizeCurrentMonth,
   } = useApp();
+  const { language, setLanguage, translations } = useI18n();
 
   const [name, setName] = useState(user?.name ?? "");
   const [color, setColor] = useState(user?.color ?? AVATAR_COLORS[0]);
@@ -105,6 +108,32 @@ export function SettingsScreen({ onCopy }: { onCopy: (code: string) => void }) {
             <h3 className="mb-4 flex items-center gap-2 font-display text-[16px] font-bold">
               <Icon name="spark" size={18} className="text-accent" />Тема оформления
             </h3>
+            
+            {/* Переключатель языка */}
+            <div className="mb-4">
+              <label className="mb-2 block text-[13px] font-bold">Язык интерфейса</label>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setLanguage('ru')}
+                  className={cx(
+                    "flex-1 rounded-xl border p-3 transition-all hover:-translate-y-0.5",
+                    language === 'ru' ? "border-accent bg-accent-soft" : "border-line hover:border-mute",
+                  )}
+                >
+                  <span className="text-[13px] font-bold">🇷🇺 Русский</span>
+                </button>
+                <button
+                  onClick={() => setLanguage('en')}
+                  className={cx(
+                    "flex-1 rounded-xl border p-3 transition-all hover:-translate-y-0.5",
+                    language === 'en' ? "border-accent bg-accent-soft" : "border-line hover:border-mute",
+                  )}
+                >
+                  <span className="text-[13px] font-bold">🇬🇧 English</span>
+                </button>
+              </div>
+            </div>
+
             <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3">
               {THEMES.map((t) => (
                 <button key={t.id} onClick={() => setTheme(t.id)}
@@ -193,6 +222,69 @@ export function SettingsScreen({ onCopy }: { onCopy: (code: string) => void }) {
             </div>
           </section>
         </Reveal>
+
+        {/* ---- Сезонное обнуление ---- */}
+        {pet && (
+          <Reveal delay={70}>
+            <section className="card p-6">
+              <h3 className="mb-4 flex items-center gap-2 font-display text-[16px] font-bold">
+                <Icon name="trophy" size={18} className="text-accent" />Сезонное обнуление
+              </h3>
+              <p className="mb-4 text-[12.5px] leading-relaxed text-mute">
+                Ежемесячное обнуление сезонного баланса для честного соревнования. Данные не удаляются, 
+                уровень заботы остаётся пожизненным.
+              </p>
+              
+              <div className="space-y-3">
+                <button
+                  onClick={() => updateSeasonSettings({ enabled: !seasonInfo.enabled })}
+                  className="flex w-full items-center gap-3 rounded-xl border border-line bg-bg2/50 px-4 py-3 text-left transition hover:border-mute"
+                >
+                  <span className={cx(
+                    "relative h-6 w-11 shrink-0 rounded-full transition-colors",
+                    seasonInfo.enabled ? "bg-accent" : "bg-line"
+                  )}>
+                    <span className={cx(
+                      "absolute top-0.5 h-5 w-5 rounded-full bg-surface shadow transition-all",
+                      seasonInfo.enabled ? "left-[22px]" : "left-0.5"
+                    )} />
+                  </span>
+                  <span className="flex-1">
+                    <span className="block text-[13.5px] font-bold">
+                      {seasonInfo.enabled ? "Включено" : "Выключено"}
+                    </span>
+                    <span className="block text-[12px] text-mute">
+                      {seasonInfo.enabled 
+                        ? `Сезон ${new Date(seasonInfo.start).toLocaleDateString("ru-RU", { month: "long" })} · осталось ${seasonInfo.daysLeft} ${plural(seasonInfo.daysLeft, "день", "дня", "дней")}`
+                        : "Счёт с самого начала"}
+                    </span>
+                  </span>
+                </button>
+
+                {seasonInfo.enabled && (
+                  <div className="space-y-3">
+                    <div className="rounded-xl bg-accent/10 p-3">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[12px] font-bold text-accent">Текущий сезон</span>
+                        <span className="text-[11px] font-medium text-mute">
+                          {new Date(seasonInfo.start).toLocaleDateString("ru-RU", { day: "numeric", month: "long" })} — {new Date(seasonInfo.end - 1).toLocaleDateString("ru-RU", { day: "numeric", month: "long" })}
+                        </span>
+                      </div>
+                    </div>
+                    
+                    <button
+                      onClick={finalizeCurrentMonth}
+                      className="flex w-full items-center justify-center gap-2 rounded-xl border border-accent/30 bg-accent/5 px-4 py-2.5 text-sm font-bold text-accent transition hover:bg-accent/10"
+                    >
+                      <Icon name="trophy" size={16} />
+                      Подвести месяц вручную
+                    </button>
+                  </div>
+                )}
+              </div>
+            </section>
+          </Reveal>
+        )}
 
         {/* ---- Напоминания ---- */}
         <Reveal delay={70}>
@@ -288,6 +380,9 @@ export function SettingsScreen({ onCopy }: { onCopy: (code: string) => void }) {
             <Icon name="download" size={18} className="text-accent" />Данные
           </h3>
           <Btn variant="outline" onClick={exportData}><Icon name="download" size={16} />Экспорт JSON</Btn>
+          <Btn variant="outline" onClick={() => window.dispatchEvent(new CustomEvent('showShareCard'))}>
+            <Icon name="share" size={16} />30 дней заботы
+          </Btn>
           <Btn variant="danger" onClick={() => setResetAsk(true)}><Icon name="trash" size={16} />Сбросить всё</Btn>
         </section>
       </Reveal>

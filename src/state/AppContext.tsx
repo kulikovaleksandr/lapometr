@@ -2,7 +2,7 @@ import {
   createContext, ReactNode, useCallback, useContext, useEffect, useMemo, useRef, useState,
 } from "react";
 import type {
-  ActivityDef, ChatMessage, DB, IconName, LogEntry, Pet, Species, TelegramCfg,
+  ActivityDef, ChatMessage, DB, IconName, LogEntry, Pet, SeasonSettings, Species, TelegramCfg,
   ThemeId, User, VetEvent, VetKind,
 } from "../lib/types";
 import { LEVELS, genInvite, levelFor, uid } from "../lib/types";
@@ -16,6 +16,19 @@ import { markSent, tgSend, wasSent } from "../lib/telegram";
 import { setUserContext, clearUserContext } from "../lib/monitoring";
 import type { WeightEntry, Expense, ExpenseCategory, UserRole } from "../lib/types";
 import { generateVetEventsForPet } from "../lib/vet-schedule";
+import {
+  getSeasonSettings,
+  getSeasonStart,
+  getSeasonEnd,
+  getSeasonLogs,
+  getSeasonPawsByUser,
+  getSeasonActivitiesByUser,
+  getSeasonWinner,
+  getSeasonInfo,
+  finalizeMonth,
+  getMonthlyResults,
+  getYearlyChampion,
+} from "../lib/seasons";
 
 export interface ExpenseInput {
   petId: string;
@@ -90,6 +103,15 @@ interface Ctx {
   setUserRole: (userId: string, role: UserRole) => void;
   canEditActivities: () => boolean;
   regenerateVetSchedule: () => void;
+  updateSeasonSettings: (patch: Partial<SeasonSettings>) => void;
+  seasonLogs: LogEntry[];
+  seasonPawsByUser: Record<string, number>;
+  seasonActivitiesByUser: Record<string, number>;
+  seasonWinner: { winnerId: string | null; pawsByUser: Record<string, number>; activitiesByUser: Record<string, number> };
+  seasonInfo: { enabled: boolean; start: number; end: number; daysLeft: number; isLastDay: boolean };
+  monthlyResults: ReturnType<typeof getMonthlyResults>;
+  yearlyChampion: string | null;
+  finalizeCurrentMonth: () => void;
   setTg: (patch: Partial<TelegramCfg>) => void;
   addAct: (input: NewActInput) => string | null;
   updateAct: (id: string, patch: Partial<ActivityDef>) => void;
@@ -154,7 +176,35 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   /* ---------- тема ---------- */
   useEffect(() => { document.documentElement.dataset.theme = theme; }, [theme]);
-  const setTheme = (t: ThemeId) => { setThemeState(t); saveTheme(t); };
+  const setTheme = (t: ThemeId) => { 
+    setThemeState(t); 
+    saveTheme(t);
+    // Помечаем, что пользователь выбрал тему вручную
+    localStorage.setItem('lapometr.theme.manual', 'true');
+  };
+
+  /* ---------- авто-тема по системной ---------- */
+  useEffect(() => {
+    // Проверяем, выбрал ли пользователь тему вручную
+    const manualTheme = localStorage.getItem('lapometr.theme.manual');
+    if (manualTheme) return; // Если выбрал вручную, не меняем автоматически
+
+    // Слушаем изменения системной темы
+    if (!window.matchMedia) return;
+    
+    const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+    const handleChange = (e: MediaQueryListEvent) => {
+      // Если пользователь не выбирал тему вручную, переключаем автоматически
+      if (!localStorage.getItem('lapometr.theme.manual')) {
+        const newTheme = e.matches ? 'night' : 'day';
+        setThemeState(newTheme);
+        saveTheme(newTheme);
+      }
+    };
+
+    mediaQuery.addEventListener('change', handleChange);
+    return () => mediaQuery.removeEventListener('change', handleChange);
+  }, []);
 
   /* ---------- тик времени ---------- */
   useEffect(() => {
@@ -538,6 +588,124 @@ export function AppProvider({ children }: { children: ReactNode }) {
     
     commit(d);
     toast(`График прививок обновлён: ${newEvents.length} событий`, "ok");
+  };
+
+  // Функции для работы с сезонами
+  const updateSeasonSettings = (patch: Partial<SeasonSettings>) => {
+    if (!pet) return;
+    const d = structuredClone(db);
+    const p = d.pets.find((p) => p.id === pet!.id);
+    if (p) {
+      const current = p.seasonSettings ?? { enabled: true, resetDay: 1 };
+      p.seasonSettings = { ...current, ...patch };
+      commit(d);
+      toast("Настройки сезона обновлены", "ok");
+    }
+  };
+
+  const seasonSettings = pet ? getSeasonSettings(
+    Object.fromEntries(db.pets.map(p => [p.id, p.seasonSettings ?? { enabled: true, resetDay: 1 }])),
+    pet.id
+  ) : { enabled: true, resetDay: 1 };
+
+  const seasonLogs = useMemo(() => {
+    if (!pet) return [];
+    return getSeasonLogs(logs, pet, seasonSettings, now);
+  }, [logs, pet, seasonSettings, now]);
+
+  const seasonPawsByUser = useMemo(() => {
+    if (!pet) return {};
+    return getSeasonPawsByUser(logs, acts, pet, seasonSettings, now);
+  }, [logs, acts, pet, seasonSettings, now]);
+
+  const seasonActivitiesByUser = useMemo(() => {
+    if (!pet) return {};
+    return getSeasonActivitiesByUser(logs, pet, seasonSettings, now);
+  }, [logs, pet, seasonSettings, now]);
+
+  const seasonWinner = useMemo(() => {
+    if (!pet) return { winnerId: null, pawsByUser: {}, activitiesByUser: {} };
+    return getSeasonWinner(logs, acts, pet, seasonSettings, now);
+  }, [logs, acts, pet, seasonSettings, now]);
+
+  const seasonInfo = useMemo(() => {
+    if (!pet) return { enabled: false, start: 0, end: 0, daysLeft: 0, isLastDay: false };
+    return getSeasonInfo(pet, seasonSettings, now);
+  }, [pet, seasonSettings, now]);
+
+  const monthlyResults = useMemo(() => {
+    if (!pet) return [];
+    return getMonthlyResults(pet);
+  }, [pet]);
+
+  const yearlyChampion = useMemo(() => {
+    if (!pet) return null;
+    const currentYear = new Date(now).getFullYear();
+    return getYearlyChampion(pet, currentYear);
+  }, [pet, now]);
+
+  const finalizeCurrentMonth = () => {
+    if (!pet) return;
+    const d = structuredClone(db);
+    const p = d.pets.find((p) => p.id === pet!.id);
+    if (p) {
+      const currentMonth = new Date(now).toISOString().slice(0, 7); // YYYY-MM
+      const result = finalizeMonth(logs, acts, p, seasonSettings, p.monthlyResults ?? [], currentMonth, now);
+      
+      if (!p.monthlyResults) p.monthlyResults = [];
+      const existingIndex = p.monthlyResults.findIndex(r => r.month === result.month);
+      if (existingIndex >= 0) {
+        p.monthlyResults[existingIndex] = result;
+      } else {
+        p.monthlyResults.push(result);
+      }
+      
+      commit(d);
+      
+      // Формируем детальное уведомление
+      if (result.winnerId) {
+        const winner = owners.find(o => o.id === result.winnerId);
+        const winnerName = winner?.name || "Неизвестный";
+        toast(`🏆 Победитель месяца: ${winnerName}!`, "ok");
+      } else {
+        toast("🤝 Ничья в этом месяце!", "warn");
+      }
+    }
+  };
+
+  const autoFinalizePreviousMonth = () => {
+    if (!pet) return;
+    const currentMonth = new Date(now).toISOString().slice(0, 7); // YYYY-MM
+    const [currentYear, currentMonthNum] = currentMonth.split('-').map(Number);
+    
+    // Вычисляем предыдущий месяц
+    let prevYear = currentYear;
+    let prevMonthNum = currentMonthNum - 1;
+    if (prevMonthNum === 0) {
+      prevYear--;
+      prevMonthNum = 12;
+    }
+    const prevMonth = `${prevYear}-${String(prevMonthNum).padStart(2, '0')}`;
+    
+    // Проверяем, есть ли уже результат за предыдущий месяц
+    const existingResult = pet.monthlyResults?.find(r => r.month === prevMonth);
+    if (existingResult) return; // Уже закрыт
+    
+    // Проверяем, есть ли логи за предыдущий месяц
+    const [year, monthNum] = prevMonth.split('-').map(Number);
+    const monthStart = new Date(year, monthNum - 1, 1).getTime();
+    const monthEnd = new Date(year, monthNum, 0, 23, 59, 59, 999).getTime();
+    
+    const prevMonthLogs = logs.filter(log =>
+      log.petId === pet.id &&
+      log.at >= monthStart &&
+      log.at <= monthEnd
+    );
+    
+    if (prevMonthLogs.length === 0) return; // Нет активности в предыдущем месяце
+    
+    // Закрываем предыдущий месяц
+    finalizeCurrentMonth();
   };
 
   /** base64-фото → Supabase Storage → ссылка в logs.img (локально и в облаке) */
@@ -1035,6 +1203,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  // Автоматическое закрытие предыдущего месяца при первом открытии нового месяца
+  useEffect(() => {
+    if (!pet) return;
+    autoFinalizePreviousMonth();
+  }, [pet?.id, now]);
+
   const value: Ctx = {
     db, user, pet, acts, logs, owners, theme, toasts, now, notifOn,
     register, login, loginDemo, guest, logout, updateProfile, createPet, complete,
@@ -1042,6 +1216,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setTheme, toast, dismissToast, toggleNotif, exportData, resetAll, replaceDb,
     userPets, setActivePet, chat, sendMessage,
     events, tg, setTg, addEvent, updateEvent, deleteEvent, regenerateVetSchedule,
+    updateSeasonSettings, seasonLogs, seasonPawsByUser, seasonActivitiesByUser,
+    seasonWinner, seasonInfo, monthlyResults, yearlyChampion, finalizeCurrentMonth,
     addWeight, updateWeight, deleteWeight,
     addExpense, updateExpense, deleteExpense,
     getUserRole, setUserRole, canEditActivities,

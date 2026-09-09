@@ -2,24 +2,28 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useApp } from "../state/AppContext";
 import { Bar, Btn, CountUp, Reveal, Seg, UserAvatar, cx, inputCls } from "../components/ui";
 import { Icon } from "../components/icons";
+import { Trophy } from "../components/Trophy";
 import {
   DAY, agoText, fmtNum, pawsOf, plural, startOfDay, startOfMonth, startOfWeek, streakDays,
 } from "../lib/db";
 
-type Period = "today" | "week" | "month" | "all";
+type Period = "today" | "week" | "month" | "season" | "all";
 const WD = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"];
 
 export function DuelScreen({ onCopy }: { onCopy: (code: string) => void }) {
-  const { acts, logs, owners, pet, user, now } = useApp();
-  const [period, setPeriod] = useState<Period>("week");
+  const { acts, logs, owners, pet, user, now, seasonInfo, seasonPawsByUser, seasonLogs } = useApp();
+  const [period, setPeriod] = useState<Period>(seasonInfo.enabled ? "season" : "week");
 
   const from = period === "today" ? startOfDay(now)
     : period === "week" ? startOfWeek(now)
     : period === "month" ? startOfMonth(now)
+    : period === "season" ? seasonInfo.start
     : 0;
 
   const rows = useMemo(() => owners.map((o) => {
-    const own = logs.filter((l) => l.ownerId === o.id && l.at >= from);
+    const own = period === "season" 
+      ? seasonLogs.filter((l) => l.ownerId === o.id)
+      : logs.filter((l) => l.ownerId === o.id && l.at >= from);
     const cnt = new Map<string, number>();
     own.forEach((l) => cnt.set(l.actId, (cnt.get(l.actId) ?? 0) + 1));
     const topE = [...cnt.entries()].sort((a, b) => b[1] - a[1])[0];
@@ -27,14 +31,14 @@ export function DuelScreen({ onCopy }: { onCopy: (code: string) => void }) {
     const lastL = own.length ? own.reduce((m, l) => (l.at > m.at ? l : m)) : undefined;
     return {
       o,
-      paws: pawsOf(acts, own),
+      paws: period === "season" ? (seasonPawsByUser[o.id] || 0) : pawsOf(acts, own),
       count: own.length,
       top: topE ? { title: acts.find((a) => a.id === topE[0])?.title ?? "?", n: topE[1] } : null,
       topActs: topActs.map(([id, n]) => ({ title: acts.find((a) => a.id === id)?.title ?? "?", n })),
       streak: streakDays(logs, now, o.id),
       last: lastL?.at,
     };
-  }).sort((a, b) => b.paws - a.paws || b.count - a.count), [owners, logs, acts, from, now]);
+  }).sort((a, b) => b.paws - a.paws || b.count - a.count), [owners, logs, acts, from, now, period, seasonLogs, seasonPawsByUser]);
 
   /* гонка последних 7 дней */
   const race = useMemo(() => {
@@ -81,11 +85,32 @@ export function DuelScreen({ onCopy }: { onCopy: (code: string) => void }) {
         <Seg<Period>
           options={[
             { id: "today", label: "Сегодня" }, { id: "week", label: "Неделя" },
-            { id: "month", label: "Месяц" }, { id: "all", label: "Всё время" },
+            { id: "month", label: "Месяц" }, 
+            ...(seasonInfo.enabled ? [{ id: "season" as const, label: "Сезон" }] : []),
+            { id: "all", label: "Всё время" },
           ]}
           value={period} onChange={setPeriod}
         />
       </header>
+
+      {/* сезонный баланс */}
+      {seasonInfo.enabled && (
+        <Reveal>
+          <div className="card p-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Icon name="trophy" size={18} className="text-accent" />
+                <span className="text-[13px] font-bold text-accent">
+                  Сезон {new Date(seasonInfo.start).toLocaleDateString("ru-RU", { month: "long" })}
+                </span>
+              </div>
+              <span className="text-[12px] font-medium text-mute">
+                осталось {seasonInfo.daysLeft} {plural(seasonInfo.daysLeft, "день", "дня", "дней")}
+              </span>
+            </div>
+          </div>
+        </Reveal>
+      )}
 
       {owners.length < 2 ? (
         <InviteHero onCopy={onCopy} />
@@ -200,6 +225,9 @@ export function DuelScreen({ onCopy }: { onCopy: (code: string) => void }) {
               <p className="mt-4 text-[12px] text-mute">Лапки по дням — кто не даёт шкале остывать</p>
             </section>
           </Reveal>
+
+          {/* Кубок - история победителей */}
+          <Trophy />
 
           {/* перепалка хозяев */}
           <Reveal delay={160}>
