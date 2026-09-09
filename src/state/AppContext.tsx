@@ -661,8 +661,51 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }
       
       commit(d);
-      toast("Результат месяца зафиксирован", "ok");
+      
+      // Формируем детальное уведомление
+      if (result.winnerId) {
+        const winner = owners.find(o => o.id === result.winnerId);
+        const winnerName = winner?.name || "Неизвестный";
+        toast(`🏆 Победитель месяца: ${winnerName}!`, "ok");
+      } else {
+        toast("🤝 Ничья в этом месяце!", "warn");
+      }
     }
+  };
+
+  const autoFinalizePreviousMonth = () => {
+    if (!pet) return;
+    const currentMonth = new Date(now).toISOString().slice(0, 7); // YYYY-MM
+    const [currentYear, currentMonthNum] = currentMonth.split('-').map(Number);
+    
+    // Вычисляем предыдущий месяц
+    let prevYear = currentYear;
+    let prevMonthNum = currentMonthNum - 1;
+    if (prevMonthNum === 0) {
+      prevYear--;
+      prevMonthNum = 12;
+    }
+    const prevMonth = `${prevYear}-${String(prevMonthNum).padStart(2, '0')}`;
+    
+    // Проверяем, есть ли уже результат за предыдущий месяц
+    const existingResult = pet.monthlyResults?.find(r => r.month === prevMonth);
+    if (existingResult) return; // Уже закрыт
+    
+    // Проверяем, есть ли логи за предыдущий месяц
+    const [year, monthNum] = prevMonth.split('-').map(Number);
+    const monthStart = new Date(year, monthNum - 1, 1).getTime();
+    const monthEnd = new Date(year, monthNum, 0, 23, 59, 59, 999).getTime();
+    
+    const prevMonthLogs = logs.filter(log =>
+      log.petId === pet.id &&
+      log.at >= monthStart &&
+      log.at <= monthEnd
+    );
+    
+    if (prevMonthLogs.length === 0) return; // Нет активности в предыдущем месяце
+    
+    // Закрываем предыдущий месяц
+    finalizeCurrentMonth();
   };
 
   /** base64-фото → Supabase Storage → ссылка в logs.img (локально и в облаке) */
@@ -1159,6 +1202,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
       toast("В снапшоте другие аккаунты — войдите заново", "warn");
     }
   };
+
+  // Автоматическое закрытие предыдущего месяца при первом открытии нового месяца
+  useEffect(() => {
+    if (!pet) return;
+    autoFinalizePreviousMonth();
+  }, [pet?.id, now]);
 
   const value: Ctx = {
     db, user, pet, acts, logs, owners, theme, toasts, now, notifOn,

@@ -38,7 +38,7 @@ export function SettingsScreen({ onCopy }: { onCopy: (code: string) => void }) {
     user, pet, owners, acts, theme, setTheme, notifOn, toggleNotif,
     updateProfile, regenInvite, joinPet, removeOwner, addAct, updateAct, deleteAct,
     exportData, resetAll, toast, tg, setTg, getUserRole, setUserRole, canEditActivities,
-    updateSeasonSettings, seasonInfo,
+    updateSeasonSettings, seasonInfo, finalizeCurrentMonth,
   } = useApp();
   const { language, setLanguage, translations } = useI18n();
 
@@ -262,13 +262,23 @@ export function SettingsScreen({ onCopy }: { onCopy: (code: string) => void }) {
                 </button>
 
                 {seasonInfo.enabled && (
-                  <div className="rounded-xl bg-accent/10 p-3">
-                    <div className="flex items-center justify-between">
-                      <span className="text-[12px] font-bold text-accent">Текущий сезон</span>
-                      <span className="text-[11px] font-medium text-mute">
-                        {new Date(seasonInfo.start).toLocaleDateString("ru-RU", { day: "numeric", month: "long" })} — {new Date(seasonInfo.end - 1).toLocaleDateString("ru-RU", { day: "numeric", month: "long" })}
-                      </span>
+                  <div className="space-y-3">
+                    <div className="rounded-xl bg-accent/10 p-3">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[12px] font-bold text-accent">Текущий сезон</span>
+                        <span className="text-[11px] font-medium text-mute">
+                          {new Date(seasonInfo.start).toLocaleDateString("ru-RU", { day: "numeric", month: "long" })} — {new Date(seasonInfo.end - 1).toLocaleDateString("ru-RU", { day: "numeric", month: "long" })}
+                        </span>
+                      </div>
                     </div>
+                    
+                    <button
+                      onClick={finalizeCurrentMonth}
+                      className="flex w-full items-center justify-center gap-2 rounded-xl border border-accent/30 bg-accent/5 px-4 py-2.5 text-sm font-bold text-accent transition hover:bg-accent/10"
+                    >
+                      <Icon name="trophy" size={16} />
+                      Подвести месяц вручную
+                    </button>
                   </div>
                 )}
               </div>
