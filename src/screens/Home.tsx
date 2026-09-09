@@ -15,9 +15,13 @@ export function HomeScreen({ onNav }: { onNav: (t: Tab) => void }) {
   const [sel, setSel] = useState<ActivityDef | null>(null);
   const [burst, setBurst] = useState(0);
   const [photo, setPhoto] = useState<string | undefined>();
+  const [onBehalfOf, setOnBehalfOf] = useState<string | undefined>();
   const photoRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => { setPhoto(undefined); }, [sel]);
+  useEffect(() => { 
+    setPhoto(undefined);
+    setOnBehalfOf(undefined);
+  }, [sel]);
 
   const total = useMemo(() => pawsOf(acts, logs), [acts, logs]);
   const lvl = levelFor(total);
@@ -38,7 +42,7 @@ export function HomeScreen({ onNav }: { onNav: (t: Tab) => void }) {
 
   const confirm = () => {
     if (!sel) return;
-    complete(sel.id, photo);
+    complete(sel.id, photo, onBehalfOf);
     setBurst((b) => b + 1);
     setTimeout(() => setSel(null), 700);
   };
@@ -380,6 +384,41 @@ export function HomeScreen({ onNav }: { onNav: (t: Tab) => void }) {
                 }}
               />
             </div>
+
+            {/* выбор "от имени" */}
+            {owners.length > 1 && (
+              <div className="mt-4">
+                <label className="mb-2 block text-[12px] font-semibold text-mute">
+                  Отметить от имени:
+                </label>
+                <div className="flex flex-wrap gap-2">
+                  {owners.map((owner) => {
+                    const isSelected = onBehalfOf === owner.id || (!onBehalfOf && owner.id === user.id);
+                    return (
+                      <button
+                        key={owner.id}
+                        onClick={() => setOnBehalfOf(owner.id === user.id ? undefined : owner.id)}
+                        className={cx(
+                          "flex items-center gap-2 rounded-full border px-3 py-1.5 text-[12px] font-bold transition-all",
+                          isSelected
+                            ? "border-accent bg-accent-soft text-ink"
+                            : "border-line bg-surface text-mute hover:border-mute"
+                        )}
+                      >
+                        <UserAvatar user={owner} size={20} />
+                        {owner.name}
+                        {owner.id === user.id && <span className="text-[10px] text-mute">(вы)</span>}
+                      </button>
+                    );
+                  })}
+                </div>
+                {onBehalfOf && (
+                  <p className="mt-2 text-[11px] text-mute">
+                    <Icon name="user" size={12} className="inline" /> Запись будет сделана от имени {owners.find(o => o.id === onBehalfOf)?.name}
+                  </p>
+                )}
+              </div>
+            )}
 
             <div className="relative mt-5">
               <Btn size="lg" className="w-full" disabled={!!selLimits.blocked} onClick={confirm}>

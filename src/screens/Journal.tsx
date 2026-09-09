@@ -135,6 +135,11 @@ export function JournalScreen() {
                           <span className="ml-auto inline-flex items-center gap-1.5 rounded-full bg-raise py-0.5 pl-0.5 pr-2.5 text-[12px] font-bold">
                             <UserAvatar user={o ?? { id: "?", email: "", name: "—", pass: "", color: "#888", createdAt: 0 }} size={20} />
                             {o?.name ?? "—"}
+                            {l.onBehalfOf && (
+                              <span className="text-[10px] text-mute" title={`Сделано от имени ${owners.find(ou => ou.id === l.onBehalfOf)?.name ?? "кого-то"}`}>
+                                → {owners.find(ou => ou.id === l.onBehalfOf)?.name ?? "?"}
+                              </span>
+                            )}
                           </span>
                         </div>
                         <p className="px-2 pt-0.5 text-[12px] font-medium text-mute">

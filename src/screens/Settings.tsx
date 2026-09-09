@@ -36,7 +36,7 @@ export function SettingsScreen({ onCopy }: { onCopy: (code: string) => void }) {
   const {
     user, pet, owners, acts, theme, setTheme, notifOn, toggleNotif,
     updateProfile, regenInvite, joinPet, removeOwner, addAct, updateAct, deleteAct,
-    exportData, resetAll, toast, tg, setTg,
+    exportData, resetAll, toast, tg, setTg, getUserRole, setUserRole, canEditActivities,
   } = useApp();
 
   const [name, setName] = useState(user?.name ?? "");
@@ -131,18 +131,40 @@ export function SettingsScreen({ onCopy }: { onCopy: (code: string) => void }) {
               <Icon name="heart" size={18} className="text-accent" />Хозяева питомца
             </h3>
             <ul className="space-y-2">
-              {owners.map((o) => (
-                <li key={o.id} className="flex items-center gap-3 rounded-xl border border-line/70 bg-bg2/50 px-3 py-2.5">
-                  <UserAvatar user={o} size={32} />
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate text-[13.5px] font-bold">{o.name}{o.id === user.id && <span className="ml-1.5 text-[12px] text-mute">· вы</span>}</span>
-                    <span className="block truncate text-[12px] text-mute">{o.email}</span>
-                  </span>
-                  {o.id !== user.id && (
-                    <Btn variant="danger" size="sm" onClick={() => removeOwner(o.id)}><Icon name="x" size={14} />убрать</Btn>
-                  )}
-                </li>
-              ))}
+              {owners.map((o) => {
+                const role = getUserRole(o.id);
+                return (
+                  <li key={o.id} className="flex items-center gap-3 rounded-xl border border-line/70 bg-bg2/50 px-3 py-2.5">
+                    <UserAvatar user={o} size={32} />
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-[13.5px] font-bold">
+                        {o.name}
+                        {o.id === user.id && <span className="ml-1.5 text-[12px] text-mute">· вы</span>}
+                        <span className={cx(
+                          "ml-2 rounded-full px-2 py-0.5 text-[10px] font-bold",
+                          role === "owner" ? "bg-accent-soft text-accent" : "bg-raise text-mute"
+                        )}>
+                          {role === "owner" ? "Владелец" : "Помощник"}
+                        </span>
+                      </span>
+                      <span className="block truncate text-[12px] text-mute">{o.email}</span>
+                    </span>
+                    {o.id !== user.id && (
+                      <div className="flex gap-2">
+                        <Btn 
+                          variant="soft" 
+                          size="sm" 
+                          onClick={() => setUserRole(o.id, role === "owner" ? "helper" : "owner")}
+                        >
+                          <Icon name="user" size={14} />
+                          {role === "owner" ? "→ Помощник" : "→ Владелец"}
+                        </Btn>
+                        <Btn variant="danger" size="sm" onClick={() => removeOwner(o.id)}><Icon name="x" size={14} />убрать</Btn>
+                      </div>
+                    )}
+                  </li>
+                );
+              })}
             </ul>
 
             {pet && (
@@ -217,7 +239,9 @@ export function SettingsScreen({ onCopy }: { onCopy: (code: string) => void }) {
             <h3 className="flex items-center gap-2 font-display text-[16px] font-bold">
               <Icon name="paw" size={18} className="text-accent" />Активности, лапки и лимиты
             </h3>
-            <Btn size="sm" onClick={() => setEdit("new")}><Icon name="plus" size={15} />Своя активность</Btn>
+            {canEditActivities() && (
+              <Btn size="sm" onClick={() => setEdit("new")}><Icon name="plus" size={15} />Своя активность</Btn>
+            )}
           </div>
           <div className="grid gap-2 md:grid-cols-2">
             {acts.map((a) => (
@@ -234,18 +258,22 @@ export function SettingsScreen({ onCopy }: { onCopy: (code: string) => void }) {
                     +{a.paws} лапок · {limitSummary(a)} · {a.remindH > 0 ? remindLabel(a.remindH) : "без напоминания"}
                   </span>
                 </span>
-                <button onClick={() => setEdit(a)} className="rounded-lg p-2 text-mute transition hover:bg-surface hover:text-ink" aria-label="Редактировать">
-                  <Icon name="edit" size={16} />
-                </button>
-                {delAsk === a.id ? (
-                  <Btn variant="danger" size="sm" onClick={() => { deleteAct(a.id); setDelAsk(null); }}>Точно?</Btn>
-                ) : (
-                  <button
-                    onClick={() => { setDelAsk(a.id); setTimeout(() => setDelAsk((v) => (v === a.id ? null : v)), 2600); }}
-                    className="rounded-lg p-2 text-mute transition hover:bg-danger/12 hover:text-danger" aria-label="Удалить"
-                  >
-                    <Icon name="trash" size={16} />
-                  </button>
+                {canEditActivities() && (
+                  <>
+                    <button onClick={() => setEdit(a)} className="rounded-lg p-2 text-mute transition hover:bg-surface hover:text-ink" aria-label="Редактировать">
+                      <Icon name="edit" size={16} />
+                    </button>
+                    {delAsk === a.id ? (
+                      <Btn variant="danger" size="sm" onClick={() => { deleteAct(a.id); setDelAsk(null); }}>Точно?</Btn>
+                    ) : (
+                      <button
+                        onClick={() => { setDelAsk(a.id); setTimeout(() => setDelAsk((v) => (v === a.id ? null : v)), 2600); }}
+                        className="rounded-lg p-2 text-mute transition hover:bg-danger/12 hover:text-danger" aria-label="Удалить"
+                      >
+                        <Icon name="trash" size={16} />
+                      </button>
+                    )}
+                  </>
                 )}
               </div>
             ))}

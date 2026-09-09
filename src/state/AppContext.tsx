@@ -75,7 +75,7 @@ interface Ctx {
   logout: () => void;
   updateProfile: (patch: Partial<Pick<User, "name" | "color" | "img">>) => void;
   createPet: (data: { name: string; species: Species; breed: string; birthday: string; color: string; img?: string }) => void;
-  complete: (actId: string, img?: string) => void;
+  complete: (actId: string, img?: string, onBehalfOf?: string) => void;
   sendMessage: (text: string) => void;
   addEvent: (input: VetInput) => string | null;
   updateEvent: (id: string, patch: Partial<VetEvent>) => void;
@@ -557,7 +557,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     });
   };
 
-  const complete = (actId: string, img?: string) => {
+  const complete = (actId: string, img?: string, onBehalfOf?: string) => {
     if (!user || !pet) return;
     const act = acts.find((a) => a.id === actId);
     if (!act) return;
@@ -567,7 +567,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const before = pawsOf(acts, logs);
     const d = structuredClone(db);
     const logId = uid();
-    d.logs.push({ id: logId, petId: pet.id, actId, ownerId: user.id, at: t, ...(img ? { img } : {}) });
+    d.logs.push({ 
+      id: logId, 
+      petId: pet.id, 
+      actId, 
+      ownerId: user.id, 
+      at: t, 
+      ...(img ? { img } : {}),
+      ...(onBehalfOf ? { onBehalfOf } : {})
+    });
     commit(d);
     toast(`+${act.paws} лапок: «${act.title}»`, "paw");
     if (levelFor(before + act.paws).idx > levelFor(before).idx) {
