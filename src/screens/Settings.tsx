@@ -38,6 +38,7 @@ export function SettingsScreen({ onCopy }: { onCopy: (code: string) => void }) {
     user, pet, owners, acts, theme, setTheme, notifOn, toggleNotif,
     updateProfile, regenInvite, joinPet, removeOwner, addAct, updateAct, deleteAct,
     exportData, resetAll, toast, tg, setTg, getUserRole, setUserRole, canEditActivities,
+    updateSeasonSettings, seasonInfo,
   } = useApp();
   const { language, setLanguage, translations } = useI18n();
 
@@ -221,6 +222,59 @@ export function SettingsScreen({ onCopy }: { onCopy: (code: string) => void }) {
             </div>
           </section>
         </Reveal>
+
+        {/* ---- Сезонное обнуление ---- */}
+        {pet && (
+          <Reveal delay={70}>
+            <section className="card p-6">
+              <h3 className="mb-4 flex items-center gap-2 font-display text-[16px] font-bold">
+                <Icon name="trophy" size={18} className="text-accent" />Сезонное обнуление
+              </h3>
+              <p className="mb-4 text-[12.5px] leading-relaxed text-mute">
+                Ежемесячное обнуление сезонного баланса для честного соревнования. Данные не удаляются, 
+                уровень заботы остаётся пожизненным.
+              </p>
+              
+              <div className="space-y-3">
+                <button
+                  onClick={() => updateSeasonSettings({ enabled: !seasonInfo.enabled })}
+                  className="flex w-full items-center gap-3 rounded-xl border border-line bg-bg2/50 px-4 py-3 text-left transition hover:border-mute"
+                >
+                  <span className={cx(
+                    "relative h-6 w-11 shrink-0 rounded-full transition-colors",
+                    seasonInfo.enabled ? "bg-accent" : "bg-line"
+                  )}>
+                    <span className={cx(
+                      "absolute top-0.5 h-5 w-5 rounded-full bg-surface shadow transition-all",
+                      seasonInfo.enabled ? "left-[22px]" : "left-0.5"
+                    )} />
+                  </span>
+                  <span className="flex-1">
+                    <span className="block text-[13.5px] font-bold">
+                      {seasonInfo.enabled ? "Включено" : "Выключено"}
+                    </span>
+                    <span className="block text-[12px] text-mute">
+                      {seasonInfo.enabled 
+                        ? `Сезон ${new Date(seasonInfo.start).toLocaleDateString("ru-RU", { month: "long" })} · осталось ${seasonInfo.daysLeft} ${plural(seasonInfo.daysLeft, "день", "дня", "дней")}`
+                        : "Счёт с самого начала"}
+                    </span>
+                  </span>
+                </button>
+
+                {seasonInfo.enabled && (
+                  <div className="rounded-xl bg-accent/10 p-3">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[12px] font-bold text-accent">Текущий сезон</span>
+                      <span className="text-[11px] font-medium text-mute">
+                        {new Date(seasonInfo.start).toLocaleDateString("ru-RU", { day: "numeric", month: "long" })} — {new Date(seasonInfo.end - 1).toLocaleDateString("ru-RU", { day: "numeric", month: "long" })}
+                      </span>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </section>
+          </Reveal>
+        )}
 
         {/* ---- Напоминания ---- */}
         <Reveal delay={70}>
