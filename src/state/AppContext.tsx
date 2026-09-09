@@ -13,6 +13,17 @@ import {
   saveActivePet, saveDB, saveNotif, saveSession, saveTelegram, saveTheme, startOfDay,
 } from "../lib/db";
 import { markSent, tgSend, wasSent } from "../lib/telegram";
+import { setUserContext, clearUserContext } from "../lib/monitoring";
+import type { WeightEntry, Expense, ExpenseCategory, UserRole } from "../lib/types";
+import { generateVetEventsForPet } from "../lib/vet-schedule";
+
+export interface ExpenseInput {
+  petId: string;
+  category: ExpenseCategory;
+  amount: number;
+  date: string;
+  description?: string;
+}
 import {
   cloudClaimInvite, cloudCurrentUser, cloudDeletePhotoUrls, cloudFetchDisplays,
   cloudFetchPetBundle, cloudFullPush, cloudRowFetch, cloudSendDiff, cloudTouchAccess,
@@ -33,6 +44,12 @@ export interface NewActInput {
 export interface VetInput {
   title: string; kind: VetKind; date: string; time?: string;
   repeat: VetEvent["repeat"]; note?: string;
+}
+
+export interface WeightInput {
+  weight: number;
+  date: string;
+  note?: string;
 }
 
 interface Ctx {
@@ -58,11 +75,21 @@ interface Ctx {
   logout: () => void;
   updateProfile: (patch: Partial<Pick<User, "name" | "color" | "img">>) => void;
   createPet: (data: { name: string; species: Species; breed: string; birthday: string; color: string; img?: string }) => void;
-  complete: (actId: string, img?: string) => void;
+  complete: (actId: string, img?: string, onBehalfOf?: string) => void;
   sendMessage: (text: string) => void;
   addEvent: (input: VetInput) => string | null;
   updateEvent: (id: string, patch: Partial<VetEvent>) => void;
   deleteEvent: (id: string) => void;
+  addWeight: (input: WeightInput) => string | null;
+  updateWeight: (id: string, patch: Partial<WeightEntry>) => void;
+  deleteWeight: (id: string) => void;
+  addExpense: (input: ExpenseInput) => string | null;
+  updateExpense: (id: string, patch: Partial<Expense>) => void;
+  deleteExpense: (id: string) => void;
+  getUserRole: (userId: string) => UserRole;
+  setUserRole: (userId: string, role: UserRole) => void;
+  canEditActivities: () => boolean;
+  regenerateVetSchedule: () => void;
   setTg: (patch: Partial<TelegramCfg>) => void;
   addAct: (input: NewActInput) => string | null;
   updateAct: (id: string, patch: Partial<ActivityDef>) => void;
@@ -222,10 +249,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const commit = useCallback((d: DB, opts?: { fromCloud?: boolean }) => {
     const prev = dbRef.current;
     lastSaved.current = JSON.stringify(d);
-    saveDB(d);
+    const removed = saveDB(d);
+    if (removed > 0) {
+      toast(`Автоочистка: удалено ${removed} старых фото для освобождения места`, "warn");
+    }
     setDbBoth(d);
     if (!opts?.fromCloud && prev !== d) sendDiff(prev, d);
-  }, [sendDiff, setDbBoth]);
+  }, [sendDiff, setDbBoth, toast]);
 
   /* привязка локального аккаунта к облачному (cloudId) */
   useEffect(() => {
@@ -438,6 +468,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if ("error" in r) return r.error;
     setUserId(r.user.id);
     saveSession(r.user.id);
+    setUserContext({ id: r.user.id, email: r.user.email, name: r.user.name });
     return null;
   };
 
@@ -455,7 +486,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
     saveSession(r.user.id);
   };
 
-  const logout = () => { saveSession(null); setUserId(null); };
+  const logout = () => {
+    saveSession(null);
+    setUserId(null);
+    clearUserContext();
+  };
 
   const updateProfile = (patch: Partial<Pick<User, "name" | "color" | "img">>) => {
     if (!user) return;
@@ -477,9 +512,32 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const d = structuredClone(db);
     d.pets.push(p);
     d.acts.push(...makePetWithActs(p).acts);
+    
+    // Автоматическая генерация ветеринарных событий
+    const vetEvents = generateVetEventsForPet(p);
+    d.events.push(...vetEvents);
+    
     commit(d);
     setActivePet(p.id);
     if (userPets.length > 0) toast(`${p.name} теперь в вашей стае`);
+    if (vetEvents.length > 0) toast(`Создан график прививок: ${vetEvents.length} событий`, "ok");
+  };
+
+  /** Обновление графика прививок для текущего питомца */
+  const regenerateVetSchedule = () => {
+    if (!pet) return;
+    
+    const d = structuredClone(db);
+    
+    // Удаляем старые ветеринарные события для этого питомца
+    d.events = d.events.filter(e => e.petId !== pet.id);
+    
+    // Генерируем новые события на основе текущего возраста питомца
+    const newEvents = generateVetEventsForPet(pet);
+    d.events.push(...newEvents);
+    
+    commit(d);
+    toast(`График прививок обновлён: ${newEvents.length} событий`, "ok");
   };
 
   /** base64-фото → Supabase Storage → ссылка в logs.img (локально и в облаке) */
@@ -499,7 +557,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     });
   };
 
-  const complete = (actId: string, img?: string) => {
+  const complete = (actId: string, img?: string, onBehalfOf?: string) => {
     if (!user || !pet) return;
     const act = acts.find((a) => a.id === actId);
     if (!act) return;
@@ -509,7 +567,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const before = pawsOf(acts, logs);
     const d = structuredClone(db);
     const logId = uid();
-    d.logs.push({ id: logId, petId: pet.id, actId, ownerId: user.id, at: t, ...(img ? { img } : {}) });
+    d.logs.push({ 
+      id: logId, 
+      petId: pet.id, 
+      actId, 
+      ownerId: user.id, 
+      at: t, 
+      ...(img ? { img } : {}),
+      ...(onBehalfOf ? { onBehalfOf } : {})
+    });
     commit(d);
     toast(`+${act.paws} лапок: «${act.title}»`, "paw");
     if (levelFor(before + act.paws).idx > levelFor(before).idx) {
@@ -782,6 +848,104 @@ export function AppProvider({ children }: { children: ReactNode }) {
     toast("Событие удалено", "warn");
   };
 
+  const addWeight: Ctx["addWeight"] = (input) => {
+    if (!pet) return "Нет выбранного питомца";
+    if (input.weight <= 0) return "Вес должен быть больше 0";
+    if (!input.date) return "Укажите дату";
+    
+    const w: WeightEntry = {
+      id: uid(),
+      petId: pet.id,
+      weight: input.weight,
+      date: input.date,
+      note: input.note,
+    };
+    const d = structuredClone(db);
+    d.weights.push(w);
+    commit(d);
+    toast(`Вес ${input.weight} кг записан`, "ok");
+    return null;
+  };
+
+  const updateWeight = (id: string, patch: Partial<WeightEntry>) => {
+    const d = structuredClone(db);
+    const w = d.weights.find((w) => w.id === id);
+    if (w) {
+      Object.assign(w, patch);
+      commit(d);
+      toast("Запись обновлена", "ok");
+    }
+  };
+
+  const deleteWeight = (id: string) => {
+    const d = structuredClone(db);
+    d.weights = d.weights.filter((w) => w.id !== id);
+    commit(d);
+    toast("Запись удалена", "warn");
+  };
+
+  const addExpense = (input: ExpenseInput): string | null => {
+    if (!input.petId) return "Не выбран питомец";
+    if (input.amount <= 0) return "Сумма должна быть больше 0";
+    if (!input.date) return "Укажите дату";
+
+    const expense: Expense = {
+      id: uid(),
+      petId: input.petId,
+      category: input.category,
+      amount: input.amount,
+      date: input.date,
+      description: input.description,
+      createdAt: Date.now(),
+    };
+
+    const d = structuredClone(db);
+    d.expenses.push(expense);
+    commit(d);
+    toast("Расход добавлен", "ok");
+    return null;
+  };
+
+  const updateExpense = (id: string, patch: Partial<Expense>) => {
+    const d = structuredClone(db);
+    const expense = d.expenses.find((e) => e.id === id);
+    if (expense) {
+      Object.assign(expense, patch);
+      commit(d);
+      toast("Расход обновлён", "ok");
+    }
+  };
+
+  const deleteExpense = (id: string) => {
+    const d = structuredClone(db);
+    d.expenses = d.expenses.filter((e) => e.id !== id);
+    commit(d);
+    toast("Расход удалён", "warn");
+  };
+
+  // Функции управления ролями
+  const getUserRole = (userId: string): UserRole => {
+    if (!pet) return "helper";
+    return pet.ownerRoles?.[userId] ?? "owner";
+  };
+
+  const setUserRole = (userId: string, role: UserRole) => {
+    if (!pet) return;
+    const d = structuredClone(db);
+    const p = d.pets.find((p) => p.id === pet!.id);
+    if (p) {
+      if (!p.ownerRoles) p.ownerRoles = {};
+      p.ownerRoles[userId] = role;
+      commit(d);
+      toast(`Роль обновлена: ${role === "owner" ? "Владелец" : "Помощник"}`, "ok");
+    }
+  };
+
+  const canEditActivities = (): boolean => {
+    if (!user || !pet) return false;
+    return getUserRole(user.id) === "owner";
+  };
+
   const setTg = (patch: Partial<TelegramCfg>) => {
     const next = { ...tg, ...patch };
     setTgState(next);
@@ -846,7 +1010,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
   /** Полная замена БД (загрузка снапшота из облака) */
   const replaceDb = (next: DB) => {
     lastSaved.current = JSON.stringify(next);
-    saveDB(next);
+    const removed = saveDB(next);
+    if (removed > 0) {
+      toast(`Автоочистка: удалено ${removed} старых фото для освобождения места`, "warn");
+    }
     setDbBoth(next);
     if (userId && next.users.some((u) => u.id === userId)) {
       toast("Данные из облака загружены", "ok");
@@ -874,7 +1041,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
     addAct, updateAct, deleteAct, regenInvite, joinPet, removeOwner,
     setTheme, toast, dismissToast, toggleNotif, exportData, resetAll, replaceDb,
     userPets, setActivePet, chat, sendMessage,
-    events, tg, setTg, addEvent, updateEvent, deleteEvent,
+    events, tg, setTg, addEvent, updateEvent, deleteEvent, regenerateVetSchedule,
+    addWeight, updateWeight, deleteWeight,
+    addExpense, updateExpense, deleteExpense,
+    getUserRole, setUserRole, canEditActivities,
     cloudUser, rtStatus, syncFromCloud,
     fetchDivergence, applyMerge, flushOutboxNow, outboxN,
   };

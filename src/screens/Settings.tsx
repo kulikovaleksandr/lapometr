@@ -3,7 +3,7 @@ import { useApp } from "../state/AppContext";
 import {
   clearCloudConfig, cloudCurrentUser, cloudFullPush, cloudPull, cloudSignIn,
   cloudSignInGoogle, cloudSignOut, cloudSignUp, cloudStorageOk, divergenceTotal,
-  lastSyncAt, loadCloudConfig, onCloudAuthChange, saveCloudConfig, testConnection,
+  isEnvCloudConfigured, lastSyncAt, loadCloudConfig, onCloudAuthChange, saveCloudConfig, testConnection,
   type CloudSnapshot, type CloudUser, type Divergence,
 } from "../lib/cloud";
 import { tgTestSend } from "../lib/telegram";
@@ -13,6 +13,7 @@ import { ACT_COLORS, ACT_ICONS, AVATAR_COLORS } from "../lib/data";
 import { fileToAvatar, plural } from "../lib/db";
 import type { ActivityDef, IconName } from "../lib/types";
 import { THEMES } from "../lib/types";
+import { getRecentErrors, subscribeErrors } from "../lib/monitoring";
 
 const remindLabel = (h: number) =>
   h === 0 ? "выключено"
@@ -35,7 +36,7 @@ export function SettingsScreen({ onCopy }: { onCopy: (code: string) => void }) {
   const {
     user, pet, owners, acts, theme, setTheme, notifOn, toggleNotif,
     updateProfile, regenInvite, joinPet, removeOwner, addAct, updateAct, deleteAct,
-    exportData, resetAll, toast, tg, setTg,
+    exportData, resetAll, toast, tg, setTg, getUserRole, setUserRole, canEditActivities,
   } = useApp();
 
   const [name, setName] = useState(user?.name ?? "");
@@ -130,18 +131,40 @@ export function SettingsScreen({ onCopy }: { onCopy: (code: string) => void }) {
               <Icon name="heart" size={18} className="text-accent" />Хозяева питомца
             </h3>
             <ul className="space-y-2">
-              {owners.map((o) => (
-                <li key={o.id} className="flex items-center gap-3 rounded-xl border border-line/70 bg-bg2/50 px-3 py-2.5">
-                  <UserAvatar user={o} size={32} />
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate text-[13.5px] font-bold">{o.name}{o.id === user.id && <span className="ml-1.5 text-[12px] text-mute">· вы</span>}</span>
-                    <span className="block truncate text-[12px] text-mute">{o.email}</span>
-                  </span>
-                  {o.id !== user.id && (
-                    <Btn variant="danger" size="sm" onClick={() => removeOwner(o.id)}><Icon name="x" size={14} />убрать</Btn>
-                  )}
-                </li>
-              ))}
+              {owners.map((o) => {
+                const role = getUserRole(o.id);
+                return (
+                  <li key={o.id} className="flex items-center gap-3 rounded-xl border border-line/70 bg-bg2/50 px-3 py-2.5">
+                    <UserAvatar user={o} size={32} />
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-[13.5px] font-bold">
+                        {o.name}
+                        {o.id === user.id && <span className="ml-1.5 text-[12px] text-mute">· вы</span>}
+                        <span className={cx(
+                          "ml-2 rounded-full px-2 py-0.5 text-[10px] font-bold",
+                          role === "owner" ? "bg-accent-soft text-accent" : "bg-raise text-mute"
+                        )}>
+                          {role === "owner" ? "Владелец" : "Помощник"}
+                        </span>
+                      </span>
+                      <span className="block truncate text-[12px] text-mute">{o.email}</span>
+                    </span>
+                    {o.id !== user.id && (
+                      <div className="flex gap-2">
+                        <Btn 
+                          variant="soft" 
+                          size="sm" 
+                          onClick={() => setUserRole(o.id, role === "owner" ? "helper" : "owner")}
+                        >
+                          <Icon name="user" size={14} />
+                          {role === "owner" ? "→ Помощник" : "→ Владелец"}
+                        </Btn>
+                        <Btn variant="danger" size="sm" onClick={() => removeOwner(o.id)}><Icon name="x" size={14} />убрать</Btn>
+                      </div>
+                    )}
+                  </li>
+                );
+              })}
             </ul>
 
             {pet && (
@@ -197,6 +220,12 @@ export function SettingsScreen({ onCopy }: { onCopy: (code: string) => void }) {
         {/* ---- Telegram ---- */}
         <TelegramCard />
 
+        {/* ---- Web Push ---- */}
+        <WebPushCard />
+
+        {/* ---- Мониторинг ---- */}
+        <MonitoringCard />
+
         {/* ---- Облако и синхронизация ---- */}
         <div className="lg:col-span-2">
           <CloudPanel />
@@ -210,7 +239,9 @@ export function SettingsScreen({ onCopy }: { onCopy: (code: string) => void }) {
             <h3 className="flex items-center gap-2 font-display text-[16px] font-bold">
               <Icon name="paw" size={18} className="text-accent" />Активности, лапки и лимиты
             </h3>
-            <Btn size="sm" onClick={() => setEdit("new")}><Icon name="plus" size={15} />Своя активность</Btn>
+            {canEditActivities() && (
+              <Btn size="sm" onClick={() => setEdit("new")}><Icon name="plus" size={15} />Своя активность</Btn>
+            )}
           </div>
           <div className="grid gap-2 md:grid-cols-2">
             {acts.map((a) => (
@@ -227,18 +258,22 @@ export function SettingsScreen({ onCopy }: { onCopy: (code: string) => void }) {
                     +{a.paws} лапок · {limitSummary(a)} · {a.remindH > 0 ? remindLabel(a.remindH) : "без напоминания"}
                   </span>
                 </span>
-                <button onClick={() => setEdit(a)} className="rounded-lg p-2 text-mute transition hover:bg-surface hover:text-ink" aria-label="Редактировать">
-                  <Icon name="edit" size={16} />
-                </button>
-                {delAsk === a.id ? (
-                  <Btn variant="danger" size="sm" onClick={() => { deleteAct(a.id); setDelAsk(null); }}>Точно?</Btn>
-                ) : (
-                  <button
-                    onClick={() => { setDelAsk(a.id); setTimeout(() => setDelAsk((v) => (v === a.id ? null : v)), 2600); }}
-                    className="rounded-lg p-2 text-mute transition hover:bg-danger/12 hover:text-danger" aria-label="Удалить"
-                  >
-                    <Icon name="trash" size={16} />
-                  </button>
+                {canEditActivities() && (
+                  <>
+                    <button onClick={() => setEdit(a)} className="rounded-lg p-2 text-mute transition hover:bg-surface hover:text-ink" aria-label="Редактировать">
+                      <Icon name="edit" size={16} />
+                    </button>
+                    {delAsk === a.id ? (
+                      <Btn variant="danger" size="sm" onClick={() => { deleteAct(a.id); setDelAsk(null); }}>Точно?</Btn>
+                    ) : (
+                      <button
+                        onClick={() => { setDelAsk(a.id); setTimeout(() => setDelAsk((v) => (v === a.id ? null : v)), 2600); }}
+                        className="rounded-lg p-2 text-mute transition hover:bg-danger/12 hover:text-danger" aria-label="Удалить"
+                      >
+                        <Icon name="trash" size={16} />
+                      </button>
+                    )}
+                  </>
                 )}
               </div>
             ))}
@@ -499,6 +534,251 @@ function TelegramCard() {
   );
 }
 
+/* ================= Мониторинг ================= */
+
+function WebPushCard() {
+  const { user, toast } = useApp();
+  const [enabled, setEnabled] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [supported, setSupported] = useState(true);
+
+  useEffect(() => {
+    const checkSupport = async () => {
+      const { isPushSupported, getPermissionStatus } = await import("../lib/web-push");
+      const isSupported = isPushSupported();
+      setSupported(isSupported);
+      
+      if (isSupported) {
+        const permission = getPermissionStatus();
+        setEnabled(permission === "granted");
+      }
+    };
+    checkSupport();
+  }, []);
+
+  const handleToggle = async () => {
+    if (!user) {
+      toast("Сначала войдите в аккаунт", "err");
+      return;
+    }
+
+    if (!supported) {
+      toast("Web Push не поддерживается вашим браузером", "err");
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const { subscribe, unsubscribe } = await import("../lib/web-push");
+      
+      if (enabled) {
+        await unsubscribe(user.id);
+        setEnabled(false);
+        toast("Push-уведомления отключены", "ok");
+      } else {
+        const vapidKey = import.meta.env.VITE_VAPID_PUBLIC_KEY;
+        if (!vapidKey) {
+          toast("VAPID ключ не настроен", "err");
+          return;
+        }
+        
+        await subscribe(vapidKey, user.id);
+        setEnabled(true);
+        toast("Push-уведомления включены", "ok");
+      }
+    } catch (error) {
+      console.error("Failed to toggle push:", error);
+      toast("Не удалось изменить настройки push", "err");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleTest = async () => {
+    if (!enabled) {
+      toast("Сначала включите push-уведомления", "warn");
+      return;
+    }
+
+    try {
+      const { sendTestNotification } = await import("../lib/web-push");
+      await sendTestNotification();
+      toast("Тестовое уведомление отправлено", "ok");
+    } catch (error) {
+      console.error("Failed to send test notification:", error);
+      toast("Не удалось отправить тестовое уведомление", "err");
+    }
+  };
+
+  return (
+    <Reveal delay={70}>
+      <section className="card p-6">
+        <h3 className="mb-1 flex items-center gap-2 font-display text-[16px] font-bold">
+          <Icon name="bell" size={18} className="text-accent" />Push-уведомления
+        </h3>
+        <p className="mb-4 text-[12.5px] leading-relaxed text-mute">
+          Получайте напоминания о заботе о питомце даже при закрытой вкладке.
+        </p>
+
+        {!supported ? (
+          <div className="rounded-xl border border-danger/30 bg-danger/10 p-4">
+            <p className="text-[13px] font-medium text-danger">
+              Web Push не поддерживается вашим браузером
+            </p>
+            <p className="mt-1 text-[12px] text-mute">
+              Используйте Chrome, Firefox, Edge или Safari 16.4+
+            </p>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            <button
+              onClick={handleToggle}
+              disabled={loading}
+              className="flex w-full items-center gap-3 rounded-xl border border-line bg-bg2/50 px-4 py-3 text-left transition hover:border-mute disabled:opacity-50"
+            >
+              <span className={cx(
+                "relative h-6 w-11 shrink-0 rounded-full transition-colors",
+                enabled ? "bg-accent" : "bg-line",
+              )}>
+                <span className={cx(
+                  "absolute top-0.5 h-5 w-5 rounded-full bg-surface shadow transition-all",
+                  enabled ? "left-[22px]" : "left-0.5",
+                )} />
+              </span>
+              <span className="flex-1">
+                <span className="block text-[13.5px] font-bold">
+                  {loading ? "Загрузка..." : enabled ? "Включены" : "Выключены"}
+                </span>
+                <span className="block text-[12px] text-mute">
+                  {enabled ? "Уведомления активны" : "Нажмите для включения"}
+                </span>
+              </span>
+              <Icon name={enabled ? "check" : "x"} size={17} className={enabled ? "text-ok" : "text-mute"} />
+            </button>
+
+            {enabled && (
+              <Btn variant="soft" size="sm" onClick={handleTest}>
+                <Icon name="bell" size={14} />Отправить тестовое уведомление
+              </Btn>
+            )}
+
+            <p className="text-[11.5px] leading-relaxed text-mute">
+              Уведомления работают через Service Worker и не требуют открытой вкладки.
+              Вы можете отключить их в любой момент.
+            </p>
+          </div>
+        )}
+      </section>
+    </Reveal>
+  );
+}
+
+function MonitoringCard() {
+  const [errors, setErrors] = useState(getRecentErrors());
+  const [showErrors, setShowErrors] = useState(false);
+
+  useEffect(() => {
+    const unsubscribe = subscribeErrors((newErrors) => {
+      setErrors(newErrors);
+    });
+    return unsubscribe;
+  }, []);
+
+  const sentryEnabled = !!import.meta.env.VITE_SENTRY_DSN;
+  const plausibleEnabled = !!import.meta.env.VITE_PLAUSIBLE_DOMAIN;
+
+  return (
+    <Reveal delay={70}>
+      <section className="card p-6">
+        <h3 className="mb-1 flex items-center gap-2 font-display text-[16px] font-bold">
+          <Icon name="chart" size={18} className="text-accent" />Мониторинг и аналитика
+        </h3>
+        <p className="mb-4 text-[12.5px] leading-relaxed text-mute">
+          Отслеживание ошибок и статистика использования приложения.
+        </p>
+
+        <div className="space-y-3">
+          <div className="flex items-center gap-3 rounded-xl border border-line bg-bg2/50 px-4 py-3">
+            <span className={cx(
+              "inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-md",
+              sentryEnabled ? "bg-ok/20 text-ok" : "bg-line text-mute",
+            )}>
+              {sentryEnabled && <Icon name="check" size={12} />}
+            </span>
+            <span className="flex-1">
+              <span className="block text-[13px] font-bold">Sentry</span>
+              <span className="block text-[11.5px] text-mute">
+                {sentryEnabled ? "отслеживание ошибок активно" : "не настроено"}
+              </span>
+            </span>
+          </div>
+
+          <div className="flex items-center gap-3 rounded-xl border border-line bg-bg2/50 px-4 py-3">
+            <span className={cx(
+              "inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-md",
+              plausibleEnabled ? "bg-ok/20 text-ok" : "bg-line text-mute",
+            )}>
+              {plausibleEnabled && <Icon name="check" size={12} />}
+            </span>
+            <span className="flex-1">
+              <span className="block text-[13px] font-bold">Plausible Analytics</span>
+              <span className="block text-[11.5px] text-mute">
+                {plausibleEnabled ? "приватная аналитика активна" : "не настроено"}
+              </span>
+            </span>
+          </div>
+        </div>
+
+        {errors.length > 0 && (
+          <>
+            <button
+              onClick={() => setShowErrors(!showErrors)}
+              className="mt-4 flex w-full items-center justify-between rounded-xl border border-line bg-bg2/50 px-4 py-3 text-left transition hover:border-mute"
+            >
+              <span className="flex items-center gap-2">
+                <Icon name="alert" size={16} className="text-warn" />
+                <span className="text-[13px] font-bold">Последние ошибки</span>
+                <span className="rounded-full bg-warn/20 px-2 py-0.5 text-[11px] font-bold text-warn">
+                  {errors.length}
+                </span>
+              </span>
+              <Icon name={showErrors ? "chev" : "chev"} size={16} className={cx("text-mute transition-transform", showErrors && "rotate-180")} />
+            </button>
+
+            {showErrors && (
+              <div className="mt-2 space-y-2">
+                {errors.map((error) => (
+                  <div key={error.id} className="rounded-lg border border-line bg-bg2/30 p-3">
+                    <p className="text-[12.5px] font-medium text-ink">{error.message}</p>
+                    <p className="mt-1 text-[11px] text-mute">
+                      {new Date(error.timestamp).toLocaleString("ru-RU")}
+                    </p>
+                    {error.context && Object.keys(error.context).length > 0 && (
+                      <details className="mt-2">
+                        <summary className="cursor-pointer text-[11px] font-medium text-mute hover:text-ink">
+                          Контекст
+                        </summary>
+                        <pre className="mt-1 overflow-x-auto rounded bg-bg2 p-2 text-[10px] text-mute">
+                          {JSON.stringify(error.context, null, 2)}
+                        </pre>
+                      </details>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </>
+        )}
+
+        <p className="mt-3 text-[11.5px] leading-relaxed text-mute">
+          Данные об ошибках отправляются в Sentry только в продакшене.
+          Аналитика использования собирается через Plausible и не содержит персональных данных.
+        </p>
+      </section>
+    </Reveal>
+  );
+}
+
 /* ================= Облако и синхронизация ================= */
 
 function GoogleG() {
@@ -531,6 +811,7 @@ function CloudPanel() {
   const [storageOk, setStorageOk] = useState<boolean | null>(null);
   const [divergence, setDivergence] = useState<Divergence | null>(null);
   const [merging, setMerging] = useState(false);
+  const isEnv = isEnvCloudConfigured();
 
   useEffect(() => {
     if (!cloudUser) { setStorageOk(null); return; }
@@ -558,9 +839,15 @@ function CloudPanel() {
 
   const disconnect = async () => {
     await cloudSignOut();
-    clearCloudConfig();
-    setCfg(null); setCloudUser(null); setUrl(""); setKey(""); setLastSync(null);
-    toast("Облако отключено, данные остались на устройстве", "warn");
+    if (!isEnv) {
+      clearCloudConfig();
+      setCfg(null);
+      setUrl("");
+      setKey("");
+    }
+    setCloudUser(null);
+    setLastSync(null);
+    toast(isEnv ? "Вы вышли из облачного аккаунта" : "Облако отключено, данные остались на устройстве", "warn");
   };
 
   const auth = async () => {
@@ -661,14 +948,15 @@ function CloudPanel() {
           </span>
         </div>
         <p className="relative mt-1.5 max-w-2xl text-[12.5px] leading-relaxed text-mute">
-          Локальный режим работает всегда. Подключите свой проект Supabase — и лапки, журнал и дуэль
-          будут жить на всех устройствах, а второй хозяин войдёт с телефона через Google или почту.
+          {isEnv
+            ? "Облако настроено через переменные окружения. Войдите в аккаунт для синхронизации между устройствами."
+            : "Локальный режим работает всегда. Подключите свой проект Supabase — и лапки, журнал и дуэль будут жить на всех устройствах, а второй хозяин войдёт с телефона через Google или почту."}
         </p>
 
         <div className="relative mt-5 grid gap-5 lg:grid-cols-2">
           {/* левая колонка: подключение / аккаунт / синк */}
           <div className="space-y-4">
-            {!cfg ? (
+            {!cfg && !isEnv ? (
               <div className="rounded-xl border border-line bg-bg2/50 p-4">
                 <Field label="Project URL" hint="Supabase → Settings → API">
                   <input className={inputCls} value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://xxxx.supabase.co" spellCheck={false} />
@@ -802,7 +1090,7 @@ function CloudPanel() {
                 </div>
 
                 <Btn variant="ghost" size="sm" onClick={disconnect}>
-                  <Icon name="x" size={14} />Отключить облако
+                  <Icon name="x" size={14} />{isEnv ? "Выйти из облака" : "Отключить облако"}
                 </Btn>
               </>
             )}
@@ -812,26 +1100,51 @@ function CloudPanel() {
 
           {/* правая колонка: инструкция */}
           <div className="rounded-xl border border-dashed border-line p-4">
-            <p className="text-[12px] font-bold uppercase tracking-wider text-mute">Настройка за 4 шага</p>
-            <ol className="mt-3 space-y-3">
-              {[
-                ["Создайте проект на supabase.com (бесплатный план подходит)", null],
-                ["SQL Editor → вставьте supabase/migrations/001_init.sql → Run", "таблицы, RLS, анти-чит лимиты и claim_invite()"],
-                ["Settings → API: скопируйте Project URL и anon key сюда", null],
-                ["Authentication → Providers: включите Email и Google для входа через Google", "нужны Client ID/Secret из Google Cloud Console"],
-              ].map(([s, sub], i) => (
-                <li key={i} className="flex items-start gap-3">
-                  <span className="mt-0.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-accent-soft font-display text-[12px] font-bold text-accent">{i + 1}</span>
-                  <span className="text-[12.5px] leading-relaxed text-mute">
-                    {s}{sub && <span className="block text-[11.5px] text-mute/75">{sub}</span>}
-                  </span>
-                </li>
-              ))}
-            </ol>
-            <p className="mt-4 border-t border-line pt-3 text-[11.5px] leading-relaxed text-mute">
-              Без настройки приложение остаётся полностью рабочим: данные живут на этом устройстве,
-              второй хозяин — через соседнюю вкладку.
-            </p>
+            {isEnv ? (
+              <>
+                <p className="text-[12px] font-bold uppercase tracking-wider text-mute">Облако настроено</p>
+                <p className="mt-3 text-[12.5px] leading-relaxed text-mute">
+                  Supabase подключён через переменные окружения. Войдите в аккаунт, чтобы начать синхронизацию.
+                </p>
+                <ol className="mt-3 space-y-3">
+                  {[
+                    ["Убедитесь, что миграции 001–004 накатаны в SQL Editor", "таблицы, RLS, анти-чит лимиты, Storage и Realtime"],
+                    ["Authentication → Providers: включите Email и Google", "нужны Client ID/Secret из Google Cloud Console"],
+                    ["Войдите или зарегистрируйтесь в форме слева", null],
+                  ].map(([s, sub], i) => (
+                    <li key={i} className="flex items-start gap-3">
+                      <span className="mt-0.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-accent-soft font-display text-[12px] font-bold text-accent">{i + 1}</span>
+                      <span className="text-[12.5px] leading-relaxed text-mute">
+                        {s}{sub && <span className="block text-[11.5px] text-mute/75">{sub}</span>}
+                      </span>
+                    </li>
+                  ))}
+                </ol>
+              </>
+            ) : (
+              <>
+                <p className="text-[12px] font-bold uppercase tracking-wider text-mute">Настройка за 4 шага</p>
+                <ol className="mt-3 space-y-3">
+                  {[
+                    ["Создайте проект на supabase.com (бесплатный план подходит)", null],
+                    ["SQL Editor → вставьте supabase/migrations/001_init.sql → Run", "таблицы, RLS, анти-чит лимиты и claim_invite()"],
+                    ["Settings → API: скопируйте Project URL и anon key сюда", null],
+                    ["Authentication → Providers: включите Email и Google для входа через Google", "нужны Client ID/Secret из Google Cloud Console"],
+                  ].map(([s, sub], i) => (
+                    <li key={i} className="flex items-start gap-3">
+                      <span className="mt-0.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-accent-soft font-display text-[12px] font-bold text-accent">{i + 1}</span>
+                      <span className="text-[12.5px] leading-relaxed text-mute">
+                        {s}{sub && <span className="block text-[11.5px] text-mute/75">{sub}</span>}
+                      </span>
+                    </li>
+                  ))}
+                </ol>
+                <p className="mt-4 border-t border-line pt-3 text-[11.5px] leading-relaxed text-mute">
+                  Без настройки приложение остаётся полностью рабочим: данные живут на этом устройстве,
+                  второй хозяин — через соседнюю вкладку.
+                </p>
+              </>
+            )}
           </div>
         </div>
       </section>

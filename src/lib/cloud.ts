@@ -26,6 +26,15 @@ let clientSig = "";
 /* ---------- конфиг ---------- */
 
 export function loadCloudConfig(): CloudConfig | null {
+  // Сначала проверяем env переменные (для продакшена)
+  const envUrl = import.meta.env.VITE_SUPABASE_URL;
+  const envKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+  
+  if (envUrl && envKey) {
+    return { url: envUrl.trim().replace(/\/+$/, ""), anonKey: envKey.trim() };
+  }
+  
+  // Затем проверяем localStorage (для ручной настройки)
   try {
     const raw = localStorage.getItem(CFG_KEY);
     if (!raw) return null;
@@ -33,6 +42,10 @@ export function loadCloudConfig(): CloudConfig | null {
     if (c?.url && c?.anonKey) return { url: c.url, anonKey: c.anonKey };
   } catch { /* повреждённый конфиг игнорируем */ }
   return null;
+}
+
+export function isEnvCloudConfigured(): boolean {
+  return !!(import.meta.env.VITE_SUPABASE_URL && import.meta.env.VITE_SUPABASE_ANON_KEY);
 }
 
 export function saveCloudConfig(url: string, anonKey: string) {
