@@ -10,6 +10,8 @@ import { StatsScreen } from './screens/Stats';
 import { SettingsScreen } from './screens/Settings';
 import { PetForm } from './components/PetForm';
 import { AchievementsPanel } from './components/AchievementsPanel';
+import { OnboardingTour } from './components/OnboardingTour';
+import { SocialShareCard } from './components/SocialShareCard';
 import { Modal, Btn } from './components/ui';
 import { Icon } from './components/icons';
 import { PWAInstallButton } from './components/PWAInstallButton';
@@ -75,6 +77,15 @@ function AppContent() {
     return 'home';
   });
   const [showAddPetModal, setShowAddPetModal] = useState(false);
+  const [showOnboarding, setShowOnboarding] = useState(false);
+  const [showShareCard, setShowShareCard] = useState(false);
+
+  // Обработчик события для показа карточки шеринга
+  useEffect(() => {
+    const handleShowShareCard = () => setShowShareCard(true);
+    window.addEventListener('showShareCard', handleShowShareCard);
+    return () => window.removeEventListener('showShareCard', handleShowShareCard);
+  }, []);
 
   // Вычисляем количество событий, требующих внимания
   const dueSoonCount = useMemo(() => {
@@ -237,6 +248,12 @@ function AppContent() {
           />
         </div>
       </Modal>
+
+      {/* Онбординг-тур */}
+      {showOnboarding && <OnboardingTour onClose={() => setShowOnboarding(false)} />}
+
+      {/* Карточка для шеринга */}
+      {showShareCard && <SocialShareCard onClose={() => setShowShareCard(false)} />}
     </div>
   );
 }

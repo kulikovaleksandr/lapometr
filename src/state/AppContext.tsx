@@ -154,7 +154,35 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   /* ---------- тема ---------- */
   useEffect(() => { document.documentElement.dataset.theme = theme; }, [theme]);
-  const setTheme = (t: ThemeId) => { setThemeState(t); saveTheme(t); };
+  const setTheme = (t: ThemeId) => { 
+    setThemeState(t); 
+    saveTheme(t);
+    // Помечаем, что пользователь выбрал тему вручную
+    localStorage.setItem('lapometr.theme.manual', 'true');
+  };
+
+  /* ---------- авто-тема по системной ---------- */
+  useEffect(() => {
+    // Проверяем, выбрал ли пользователь тему вручную
+    const manualTheme = localStorage.getItem('lapometr.theme.manual');
+    if (manualTheme) return; // Если выбрал вручную, не меняем автоматически
+
+    // Слушаем изменения системной темы
+    if (!window.matchMedia) return;
+    
+    const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+    const handleChange = (e: MediaQueryListEvent) => {
+      // Если пользователь не выбирал тему вручную, переключаем автоматически
+      if (!localStorage.getItem('lapometr.theme.manual')) {
+        const newTheme = e.matches ? 'night' : 'day';
+        setThemeState(newTheme);
+        saveTheme(newTheme);
+      }
+    };
+
+    mediaQuery.addEventListener('change', handleChange);
+    return () => mediaQuery.removeEventListener('change', handleChange);
+  }, []);
 
   /* ---------- тик времени ---------- */
   useEffect(() => {

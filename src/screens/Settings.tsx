@@ -13,6 +13,7 @@ import { ACT_COLORS, ACT_ICONS, AVATAR_COLORS } from "../lib/data";
 import { fileToAvatar, plural } from "../lib/db";
 import type { ActivityDef, IconName } from "../lib/types";
 import { THEMES } from "../lib/types";
+import { useI18n } from "../hooks/useI18n";
 import { getRecentErrors, subscribeErrors } from "../lib/monitoring";
 
 const remindLabel = (h: number) =>
@@ -38,6 +39,7 @@ export function SettingsScreen({ onCopy }: { onCopy: (code: string) => void }) {
     updateProfile, regenInvite, joinPet, removeOwner, addAct, updateAct, deleteAct,
     exportData, resetAll, toast, tg, setTg, getUserRole, setUserRole, canEditActivities,
   } = useApp();
+  const { language, setLanguage, translations } = useI18n();
 
   const [name, setName] = useState(user?.name ?? "");
   const [color, setColor] = useState(user?.color ?? AVATAR_COLORS[0]);
@@ -105,6 +107,32 @@ export function SettingsScreen({ onCopy }: { onCopy: (code: string) => void }) {
             <h3 className="mb-4 flex items-center gap-2 font-display text-[16px] font-bold">
               <Icon name="spark" size={18} className="text-accent" />Тема оформления
             </h3>
+            
+            {/* Переключатель языка */}
+            <div className="mb-4">
+              <label className="mb-2 block text-[13px] font-bold">Язык интерфейса</label>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setLanguage('ru')}
+                  className={cx(
+                    "flex-1 rounded-xl border p-3 transition-all hover:-translate-y-0.5",
+                    language === 'ru' ? "border-accent bg-accent-soft" : "border-line hover:border-mute",
+                  )}
+                >
+                  <span className="text-[13px] font-bold">🇷🇺 Русский</span>
+                </button>
+                <button
+                  onClick={() => setLanguage('en')}
+                  className={cx(
+                    "flex-1 rounded-xl border p-3 transition-all hover:-translate-y-0.5",
+                    language === 'en' ? "border-accent bg-accent-soft" : "border-line hover:border-mute",
+                  )}
+                >
+                  <span className="text-[13px] font-bold">🇬🇧 English</span>
+                </button>
+              </div>
+            </div>
+
             <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3">
               {THEMES.map((t) => (
                 <button key={t.id} onClick={() => setTheme(t.id)}
@@ -288,6 +316,9 @@ export function SettingsScreen({ onCopy }: { onCopy: (code: string) => void }) {
             <Icon name="download" size={18} className="text-accent" />Данные
           </h3>
           <Btn variant="outline" onClick={exportData}><Icon name="download" size={16} />Экспорт JSON</Btn>
+          <Btn variant="outline" onClick={() => window.dispatchEvent(new CustomEvent('showShareCard'))}>
+            <Icon name="share" size={16} />30 дней заботы
+          </Btn>
           <Btn variant="danger" onClick={() => setResetAsk(true)}><Icon name="trash" size={16} />Сбросить всё</Btn>
         </section>
       </Reveal>
