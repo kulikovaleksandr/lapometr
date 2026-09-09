@@ -196,13 +196,16 @@ export function finalizeMonth(
   const [year, monthNum] = month.split('-').map(Number);
   const monthStart = new Date(year, monthNum - 1, 1).getTime();
   const monthEnd = new Date(year, monthNum, 0, 23, 59, 59, 999).getTime();
-
+  
+  // Краевой случай: если питомец создан в этом месяце,
+  // учитываем только логи после даты создания
+  const effectiveStart = Math.max(monthStart, pet.createdAt);
+  
   const monthLogs = logs.filter(log =>
     log.petId === pet.id &&
-    log.at >= monthStart &&
+    log.at >= effectiveStart &&
     log.at <= monthEnd
   );
-
   // Подсчитываем статистику
   const pawsByUser: Record<string, number> = {};
   const activitiesByUser: Record<string, number> = {};
