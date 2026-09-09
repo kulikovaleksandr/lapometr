@@ -2,7 +2,7 @@ import {
   createContext, ReactNode, useCallback, useContext, useEffect, useMemo, useRef, useState,
 } from "react";
 import type {
-  ActivityDef, ChatMessage, DB, IconName, LogEntry, Pet, Species, TelegramCfg,
+  ActivityDef, ChatMessage, DB, IconName, LogEntry, Pet, SeasonSettings, Species, TelegramCfg,
   ThemeId, User, VetEvent, VetKind,
 } from "../lib/types";
 import { LEVELS, genInvite, levelFor, uid } from "../lib/types";
@@ -16,6 +16,19 @@ import { markSent, tgSend, wasSent } from "../lib/telegram";
 import { setUserContext, clearUserContext } from "../lib/monitoring";
 import type { WeightEntry, Expense, ExpenseCategory, UserRole } from "../lib/types";
 import { generateVetEventsForPet } from "../lib/vet-schedule";
+import {
+  getSeasonSettings,
+  getSeasonStart,
+  getSeasonEnd,
+  getSeasonLogs,
+  getSeasonPawsByUser,
+  getSeasonActivitiesByUser,
+  getSeasonWinner,
+  getSeasonInfo,
+  finalizeMonth,
+  getMonthlyResults,
+  getYearlyChampion,
+} from "../lib/seasons";
 
 export interface ExpenseInput {
   petId: string;
@@ -90,6 +103,15 @@ interface Ctx {
   setUserRole: (userId: string, role: UserRole) => void;
   canEditActivities: () => boolean;
   regenerateVetSchedule: () => void;
+  updateSeasonSettings: (patch: Partial<SeasonSettings>) => void;
+  seasonLogs: LogEntry[];
+  seasonPawsByUser: Record<string, number>;
+  seasonActivitiesByUser: Record<string, number>;
+  seasonWinner: { winnerId: string | null; pawsByUser: Record<string, number>; activitiesByUser: Record<string, number> };
+  seasonInfo: { enabled: boolean; start: number; end: number; daysLeft: number; isLastDay: boolean };
+  monthlyResults: ReturnType<typeof getMonthlyResults>;
+  yearlyChampion: string | null;
+  finalizeCurrentMonth: () => void;
   setTg: (patch: Partial<TelegramCfg>) => void;
   addAct: (input: NewActInput) => string | null;
   updateAct: (id: string, patch: Partial<ActivityDef>) => void;
@@ -566,6 +588,81 @@ export function AppProvider({ children }: { children: ReactNode }) {
     
     commit(d);
     toast(`График прививок обновлён: ${newEvents.length} событий`, "ok");
+  };
+
+  // Функции для работы с сезонами
+  const updateSeasonSettings = (patch: Partial<SeasonSettings>) => {
+    if (!pet) return;
+    const d = structuredClone(db);
+    const p = d.pets.find((p) => p.id === pet!.id);
+    if (p) {
+      const current = p.seasonSettings ?? { enabled: true, resetDay: 1 };
+      p.seasonSettings = { ...current, ...patch };
+      commit(d);
+      toast("Настройки сезона обновлены", "ok");
+    }
+  };
+
+  const seasonSettings = pet ? getSeasonSettings(
+    Object.fromEntries(db.pets.map(p => [p.id, p.seasonSettings ?? { enabled: true, resetDay: 1 }])),
+    pet.id
+  ) : { enabled: true, resetDay: 1 };
+
+  const seasonLogs = useMemo(() => {
+    if (!pet) return [];
+    return getSeasonLogs(logs, pet, seasonSettings, now);
+  }, [logs, pet, seasonSettings, now]);
+
+  const seasonPawsByUser = useMemo(() => {
+    if (!pet) return {};
+    return getSeasonPawsByUser(logs, acts, pet, seasonSettings, now);
+  }, [logs, acts, pet, seasonSettings, now]);
+
+  const seasonActivitiesByUser = useMemo(() => {
+    if (!pet) return {};
+    return getSeasonActivitiesByUser(logs, pet, seasonSettings, now);
+  }, [logs, pet, seasonSettings, now]);
+
+  const seasonWinner = useMemo(() => {
+    if (!pet) return { winnerId: null, pawsByUser: {}, activitiesByUser: {} };
+    return getSeasonWinner(logs, acts, pet, seasonSettings, now);
+  }, [logs, acts, pet, seasonSettings, now]);
+
+  const seasonInfo = useMemo(() => {
+    if (!pet) return { enabled: false, start: 0, end: 0, daysLeft: 0, isLastDay: false };
+    return getSeasonInfo(pet, seasonSettings, now);
+  }, [pet, seasonSettings, now]);
+
+  const monthlyResults = useMemo(() => {
+    if (!pet) return [];
+    return getMonthlyResults(pet);
+  }, [pet]);
+
+  const yearlyChampion = useMemo(() => {
+    if (!pet) return null;
+    const currentYear = new Date(now).getFullYear();
+    return getYearlyChampion(pet, currentYear);
+  }, [pet, now]);
+
+  const finalizeCurrentMonth = () => {
+    if (!pet) return;
+    const d = structuredClone(db);
+    const p = d.pets.find((p) => p.id === pet!.id);
+    if (p) {
+      const currentMonth = new Date(now).toISOString().slice(0, 7); // YYYY-MM
+      const result = finalizeMonth(logs, acts, p, seasonSettings, p.monthlyResults ?? [], currentMonth, now);
+      
+      if (!p.monthlyResults) p.monthlyResults = [];
+      const existingIndex = p.monthlyResults.findIndex(r => r.month === result.month);
+      if (existingIndex >= 0) {
+        p.monthlyResults[existingIndex] = result;
+      } else {
+        p.monthlyResults.push(result);
+      }
+      
+      commit(d);
+      toast("Результат месяца зафиксирован", "ok");
+    }
   };
 
   /** base64-фото → Supabase Storage → ссылка в logs.img (локально и в облаке) */
@@ -1070,6 +1167,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setTheme, toast, dismissToast, toggleNotif, exportData, resetAll, replaceDb,
     userPets, setActivePet, chat, sendMessage,
     events, tg, setTg, addEvent, updateEvent, deleteEvent, regenerateVetSchedule,
+    updateSeasonSettings, seasonLogs, seasonPawsByUser, seasonActivitiesByUser,
+    seasonWinner, seasonInfo, monthlyResults, yearlyChampion, finalizeCurrentMonth,
     addWeight, updateWeight, deleteWeight,
     addExpense, updateExpense, deleteExpense,
     getUserRole, setUserRole, canEditActivities,
