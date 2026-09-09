@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useApp } from "../state/AppContext";
 import { Bar, Btn, CountUp, Reveal, Seg, UserAvatar, cx, inputCls } from "../components/ui";
 import { Icon } from "../components/icons";
+import { Trophy } from "../components/Trophy";
 import {
   DAY, agoText, fmtNum, pawsOf, plural, startOfDay, startOfMonth, startOfWeek, streakDays,
 } from "../lib/db";
@@ -224,6 +225,9 @@ export function DuelScreen({ onCopy }: { onCopy: (code: string) => void }) {
               <p className="mt-4 text-[12px] text-mute">Лапки по дням — кто не даёт шкале остывать</p>
             </section>
           </Reveal>
+
+          {/* Кубок - история победителей */}
+          <Trophy />
 
           {/* перепалка хозяев */}
           <Reveal delay={160}>
