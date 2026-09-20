@@ -371,21 +371,55 @@ Edge Function `reminders-send` автоматически собирает пр�
 - Анти-чит система для лимитов активностей
 - Гигиена снапшотов (пароли и email не попадают в облако)
 
-## 🚀 Деплой
+## 🚀 Развертывание и обновление
 
-### Cloudflare Pages (рекомендуется)
+Подробная инструкция по развертыванию, обновлению и откату находится в файле [DEPLOYMENT.md](DEPLOYMENT.md).
+
+### Быстрый старт
+
+```bash
+# Клонирование репозитория
+git clone https://github.com/your-username/lapometr.git
+cd lapometr
+
+# Настройка переменных окружения
+cp .env.example .env
+# Отредактируйте .env, добавив ваши Supabase URL и ключи
+
+# Запуск через Docker Compose
+docker compose up -d
+
+# Приложение доступно на http://localhost:3000
+```
+
+### Обновление
+
+```bash
+# Получение последних изменений
+git pull origin main
+
+# Применение миграций (если есть новые)
+docker compose run --rm migrate
+
+# Пересборка и перезапуск
+docker compose up -d --build
+```
+
+### Альтернативные платформы
+
+**Cloudflare Pages (рекомендуется)**
 ```bash
 npm run build
 # Загрузите папку dist в Cloudflare Pages
 ```
 
-### Netlify
+**Netlify**
 ```bash
 npm run build
 # Загрузите папку dist в Netlify
 ```
 
-### Docker
+**Docker ( standalone)**
 ```bash
 docker build -t lapometr .
 docker run -p 8080:80 lapometr
