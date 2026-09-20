@@ -99,12 +99,12 @@ export interface TelegramCfg {
 
 // Темы
 export type ThemeId = "night" | "day" | "latte" | "forest" | "olive";
-export const THEMES: { id: ThemeId; name: string; bg: string }[] = [
-  { id: "night", name: "Ночь", bg: "#211a14" },
-  { id: "day", name: "День", bg: "#faf8f3" },
-  { id: "latte", name: "Латте", bg: "#f5ebe0" },
-  { id: "forest", name: "Лес", bg: "#e8f0e3" },
-  { id: "olive", name: "Олива", bg: "#f0f0e3" },
+export const THEMES: { id: ThemeId; name: string; bg: string; swatch: string }[] = [
+  { id: "night", name: "Ночь", bg: "#211a14", swatch: "#f59e0b" },
+  { id: "day", name: "День", bg: "#faf8f3", swatch: "#f59e0b" },
+  { id: "latte", name: "Латте", bg: "#f5ebe0", swatch: "#8d6e63" },
+  { id: "forest", name: "Лес", bg: "#e8f0e3", swatch: "#81c784" },
+  { id: "olive", name: "Олива", bg: "#f0f0e3", swatch: "#aed581" },
 ];
 
 // Уровни
