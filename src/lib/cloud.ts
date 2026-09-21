@@ -30,22 +30,87 @@ export function loadCloudConfig(): CloudConfig | null {
   const envUrl = import.meta.env.VITE_SUPABASE_URL;
   const envKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
   
+  console.log("[Cloud Config] Проверка переменных окружения:", {
+    hasUrl: !!envUrl,
+    hasKey: !!envKey,
+    urlValue: envUrl || "undefined",
+    keyLength: envKey?.length || 0
+  });
+  
   if (envUrl && envKey) {
-    return { url: envUrl.trim().replace(/\/+$/, ""), anonKey: envKey.trim() };
+    const config = { url: envUrl.trim().replace(/\/+$/, ""), anonKey: envKey.trim() };
+    console.log("[Cloud Config] ✓ Облачный режим активирован через env переменные");
+    console.log("[Cloud Config] URL:", config.url);
+    return config;
   }
+  
+  console.log("[Cloud Config] ✗ Env переменные не заданы, проверяем localStorage...");
   
   // Затем проверяем localStorage (для ручной настройки)
   try {
     const raw = localStorage.getItem(CFG_KEY);
-    if (!raw) return null;
+    if (!raw) {
+      console.log("[Cloud Config] ✗ Нет конфигурации в localStorage");
+      return null;
+    }
     const c = JSON.parse(raw) as Partial<CloudConfig>;
-    if (c?.url && c?.anonKey) return { url: c.url, anonKey: c.anonKey };
-  } catch { /* повреждённый конфиг игнорируем */ }
+    if (c?.url && c?.anonKey) {
+      console.log("[Cloud Config] ✓ Облачный режим активирован через localStorage");
+      return { url: c.url, anonKey: c.anonKey };
+    }
+    console.log("[Cloud Config] ✗ Конфигурация в localStorage некорректна");
+  } catch (e) {
+    console.error("[Cloud Config] ✗ Ошибка чтения конфигурации из localStorage:", e);
+  }
+  
+  console.log("[Cloud Config] ✗ Облачный режим НЕ активирован. Работаем в локальном режиме.");
   return null;
 }
 
 export function isEnvCloudConfigured(): boolean {
   return !!(import.meta.env.VITE_SUPABASE_URL && import.meta.env.VITE_SUPABASE_ANON_KEY);
+}
+
+/**
+ * Автоматическая инициализация облачного режима при старте приложения.
+ * Вызывается один раз при загрузке приложения.
+ */
+export async function initializeCloud(): Promise<boolean> {
+  console.log("[Cloud Init] === Инициализация облачного режима ===");
+  
+  const cfg = loadCloudConfig();
+  if (!cfg) {
+    console.log("[Cloud Init] ✗ Облачный режим не активирован (нет конфигурации)");
+    return false;
+  }
+  
+  console.log("[Cloud Init] ✓ Конфигурация найдена, проверяем подключение...");
+  
+  // Создаём клиент
+  const client = getClient();
+  if (!client) {
+    console.error("[Cloud Init] ✗ Не удалось создать Supabase клиент");
+    return false;
+  }
+  
+  // Проверяем подключение
+  try {
+    console.log("[Cloud Init] Проверка подключения к", cfg.url);
+    const { data, error } = await client.auth.getSession();
+    
+    if (error) {
+      console.error("[Cloud Init] ✗ Ошибка подключения:", error.message);
+      return false;
+    }
+    
+    console.log("[Cloud Init] ✓ Подключение успешно установлено");
+    console.log("[Cloud Init] Текущая сессия:", data.session ? "активна" : "нет");
+    
+    return true;
+  } catch (error) {
+    console.error("[Cloud Init] ✗ Критическая ошибка инициализации:", error);
+    return false;
+  }
 }
 
 export function saveCloudConfig(url: string, anonKey: string) {
@@ -63,13 +128,31 @@ export function clearCloudConfig() {
 
 export function getClient(): SupabaseClient | null {
   const cfg = loadCloudConfig();
-  if (!cfg) return null;
+  if (!cfg) {
+    console.log("[Supabase Client] ✗ Конфигурация не найдена, клиент не создан");
+    return null;
+  }
+  
   const sig = cfg.url + "::" + cfg.anonKey;
   if (!client || clientSig !== sig) {
-    client = createClient(cfg.url, cfg.anonKey, {
-      auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true },
-    });
-    clientSig = sig;
+    console.log("[Supabase Client] Создание клиента Supabase...");
+    console.log("[Supabase Client] URL:", cfg.url);
+    try {
+      client = createClient(cfg.url, cfg.anonKey, {
+        auth: { 
+          persistSession: true, 
+          autoRefreshToken: true, 
+          detectSessionInUrl: true 
+        },
+      });
+      clientSig = sig;
+      console.log("[Supabase Client] ✓ Клиент успешно создан");
+    } catch (error) {
+      console.error("[Supabase Client] ✗ Ошибка создания клиента:", error);
+      return null;
+    }
+  } else {
+    console.log("[Supabase Client] ✓ Используем существующий клиент");
   }
   return client;
 }
