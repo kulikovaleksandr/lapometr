@@ -20,9 +20,9 @@ export function AuthScreen() {
   const [err, setErr] = useState<string | null>(null);
   const [shake, setShake] = useState(0);
 
-  const submit = (e: FormEvent) => {
+  const submit = async (e: FormEvent) => {
     e.preventDefault();
-    const r = mode === "login" ? login(email, pass) : register(email, pass, name);
+    const r = mode === "login" ? await login(email, pass) : await register(email, pass, name);
     if (r) { setErr(r); setShake((s) => s + 1); }
   };
 
