@@ -135,6 +135,28 @@ npm run build
 npm run preview
 ```
 
+### Настройка облачного режима (Supabase)
+
+По умолчанию приложение работает в **локальном режиме** (localStorage). Для включения облачного режима:
+
+1. Создайте файл `.env` в корне проекта:
+   ```bash
+   VITE_SUPABASE_URL=https://your-project.supabase.co
+   VITE_SUPABASE_ANON_KEY=your-anon-key
+   ```
+
+2. Пересоберите приложение:
+   ```bash
+   npm run build
+   ```
+
+3. Проверьте в консоли браузера (F12):
+   ```
+   [Cloud Init] ✓ Облачный режим активирован и готов к работе
+   ```
+
+📖 **Подробная инструкция:** [CLOUD_SETUP.md](CLOUD_SETUP.md)
+
 ### Тестирование
 
 Проект включает два уровня тестирования:
