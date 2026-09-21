@@ -87,7 +87,7 @@ interface Ctx {
   guest: () => void;
   logout: () => void;
   updateProfile: (patch: Partial<Pick<User, "name" | "color" | "img">>) => void;
-  createPet: (data: { name: string; species: Species; breed: string; birthday: string; color: string; img?: string }) => void;
+  createPet: (data: { name: string; species: Species; breed: string; birthday: string; color: string; img?: string }) => Promise<void>;
   complete: (actId: string, img?: string, onBehalfOf?: string) => void;
   sendMessage: (text: string) => void;
   addEvent: (input: VetInput) => string | null;
@@ -623,7 +623,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     toast("Профиль обновлён");
   };
 
-  const createPet: Ctx["createPet"] = (data) => {
+  const createPet: Ctx["createPet"] = async (data) => {
     if (!user) return;
     const p: Pet = {
       id: uid(), name: data.name, species: data.species, breed: data.breed,
@@ -642,6 +642,19 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setActivePet(p.id);
     if (userPets.length > 0) toast(`${p.name} теперь в вашей стае`);
     if (vetEvents.length > 0) toast(`Создан график прививок: ${vetEvents.length} событий`, "ok");
+    
+    // Синхронизация с облаком, если активен облачный режим
+    const cloudConfig = loadCloudConfig();
+    if (cloudConfig && user.cloudId) {
+      console.log("[CreatePet] Синхронизация питомца с облаком...");
+      const result = await cloudFullPush(d, user.id);
+      if (result.ok) {
+        console.log("[CreatePet] ✓ Питомец синхронизирован с облаком");
+      } else {
+        console.error("[CreatePet] Ошибка синхронизации:", result.error);
+        toast(`Предупреждение: ${result.error}`, "warn");
+      }
+    }
   };
 
   /** Обновление графика прививок для текущего питомца */
