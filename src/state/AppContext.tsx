@@ -39,8 +39,8 @@ export interface ExpenseInput {
 }
 import {
   cloudClaimInvite, cloudCurrentUser, cloudDeletePhotoUrls, cloudFetchDisplays,
-  cloudFetchPetBundle, cloudFullPush, cloudRowFetch, cloudSendDiff, cloudTouchAccess,
-  cloudUploadPhoto, cloudUpsertLogRow, computeDivergence, divergenceTotal,
+  cloudFetchPetBundle, cloudFullPush, cloudRowFetch, cloudSendDiff, cloudSignIn, cloudSignUp,
+  cloudTouchAccess, cloudUploadPhoto, cloudUpsertLogRow, computeDivergence, divergenceTotal,
   enqueueOutbox, flushOutbox, isStorageUrl, loadCloudConfig,
   mergeRemoteRows, onCloudAuthChange, outboxCount,
   subscribeRealtime,
@@ -81,8 +81,8 @@ interface Ctx {
   toasts: Toast[];
   now: number;
   notifOn: boolean;
-  register: (email: string, pass: string, name: string) => string | null;
-  login: (email: string, pass: string) => string | null;
+  register: (email: string, pass: string, name: string) => Promise<string | null>;
+  login: (email: string, pass: string) => Promise<string | null>;
   loginDemo: () => void;
   guest: () => void;
   logout: () => void;
@@ -504,7 +504,38 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, [notifOn, tgReady, tg, pet, acts, logs, events]);
 
   /* ---------- действия ---------- */
-  const register = (email: string, pass: string, name: string): string | null => {
+  const register = async (email: string, pass: string, name: string): Promise<string | null> => {
+    // Сначала регистрируем в облаке (если активен)
+    const cloudConfig = loadCloudConfig();
+    if (cloudConfig) {
+      console.log("[Register] Облачный режим активен, регистрируем в Supabase...");
+      const cloudResult = await cloudSignUp(email, pass, name);
+      if (!cloudResult.ok) {
+        console.error("[Register] Ошибка облачной регистрации:", cloudResult.error);
+        return cloudResult.error;
+      }
+      console.log("[Register] ✓ Облачная регистрация успешна");
+      
+      // Сохраняем cloudId для связи с локальным пользователем
+      if (cloudResult.data) {
+        const r = registerUser(db, email, pass, name);
+        if ("error" in r) return r.error;
+        
+        // Добавляем cloudId к локальному пользователю
+        const user = r.db.users.find(u => u.id === r.user.id);
+        if (user) {
+          user.cloudId = cloudResult.data.id;
+        }
+        
+        commit(r.db);
+        setUserId(r.user.id);
+        saveSession(r.user.id);
+        return null;
+      }
+    }
+    
+    // Fallback на локальную регистрацию
+    console.log("[Register] Облачный режим не активен, используем локальную регистрацию");
     const r = registerUser(db, email, pass, name);
     if ("error" in r) return r.error;
     commit(r.db);
@@ -513,7 +544,47 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return null;
   };
 
-  const login = (email: string, pass: string): string | null => {
+  const login = async (email: string, pass: string): Promise<string | null> => {
+    // Сначала пробуем облачный вход (если активен)
+    const cloudConfig = loadCloudConfig();
+    if (cloudConfig) {
+      console.log("[Login] Облачный режим активен, входим через Supabase...");
+      const cloudResult = await cloudSignIn(email, pass);
+      if (cloudResult.ok) {
+        console.log("[Login] ✓ Облачный вход успешен");
+        
+        // Находим или создаём локального пользователя
+        const localUser = db.users.find(u => u.cloudId === cloudResult.data?.id);
+        if (localUser) {
+          setUserId(localUser.id);
+          saveSession(localUser.id);
+          setUserContext({ id: localUser.id, email: localUser.email, name: localUser.name });
+          return null;
+        }
+        
+        // Если локального пользователя нет, создаём его
+        const r = registerUser(db, email, pass, email.split('@')[0]);
+        if ("error" in r) return r.error;
+        
+        // Добавляем cloudId
+        const user = r.db.users.find(u => u.id === r.user.id);
+        if (user && cloudResult.data) {
+          user.cloudId = cloudResult.data.id;
+        }
+        
+        commit(r.db);
+        setUserId(r.user.id);
+        saveSession(r.user.id);
+        setUserContext({ id: r.user.id, email: r.user.email, name: r.user.name });
+        return null;
+      } else {
+        console.log("[Login] Облачный вход не удался:", cloudResult.error);
+        // Если облако не работает, пробуем локальный вход
+      }
+    }
+    
+    // Fallback на локальный вход
+    console.log("[Login] Используем локальный вход");
     const r = loginUser(db, email, pass);
     if ("error" in r) return r.error;
     setUserId(r.user.id);
