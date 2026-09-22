@@ -1,211 +1,458 @@
--- ============================================================
---  Лапометр · миграция 001_init.sql
---  Запуск: Supabase Dashboard → SQL Editor → вставить → Run
---  Затем в Settings приложения укажите Project URL и anon key.
---  Для Google OAuth: Supabase → Authentication → Providers →
---  Google (нужны Client ID/Secret из Google Cloud Console).
--- ============================================================
+-- Миграция 001: Базовая структура базы данных
+-- Создаёт основные таблицы для приложения Лапометр
 
-create extension if not exists pgcrypto;
-
--- ---------- Таблицы ----------
-
-create table public.profiles (
-  id         uuid primary key references auth.users (id) on delete cascade,
-  email      text,
-  name       text not null default 'Хозяин',
-  color      text not null default '#f2b45a',
+-- Таблица профилей пользователей
+create table if not exists public.profiles (
+  id uuid primary key references auth.users(id) on delete cascade,
+  email text unique not null,
+  name text not null,
   avatar_url text,
-  created_at timestamptz not null default now()
+  created_at timestamp with time zone default timezone('utc'::text, now()) not null,
+  updated_at timestamp with time zone default timezone('utc'::text, now()) not null
 );
 
-create table public.pets (
-  id          uuid primary key default gen_random_uuid(),
-  owner_id    uuid not null references auth.users (id) on delete cascade,
-  name        text not null,
-  species     text not null default 'cat',
-  breed       text,
-  birthday    date,
-  color       text not null default '#e8a34e',
-  avatar_url  text,
+-- Таблица питомцев
+create table if not exists public.pets (
+  id uuid primary key default gen_random_uuid(),
+  owner_id uuid references public.profiles(id) on delete cascade not null,
+  name text not null,
+  species text not null,
+  breed text,
+  birthday date,
+  color text,
+  img text,
   invite_code text unique,
-  created_at  timestamptz not null default now()
+  created_at timestamp with time zone default timezone('utc'::text, now()) not null,
+  updated_at timestamp with time zone default timezone('utc'::text, now()) not null
 );
 
-create table public.pet_owners (
-  pet_id    uuid not null references public.pets (id) on delete cascade,
-  user_id   uuid not null references auth.users (id) on delete cascade,
-  role      text not null default 'owner',
-  joined_at timestamptz not null default now(),
-  primary key (pet_id, user_id)
+-- Таблица владельцев питомцев (для мультипользовательского доступа)
+create table if not exists public.pet_owners (
+  id uuid primary key default gen_random_uuid(),
+  pet_id uuid references public.pets(id) on delete cascade not null,
+  user_id uuid references public.profiles(id) on delete cascade not null,
+  role text not null default 'owner',
+  created_at timestamp with time zone default timezone('utc'::text, now()) not null,
+  unique(pet_id, user_id)
 );
 
-create table public.activity_defs (
-  id           uuid primary key default gen_random_uuid(),
-  pet_id       uuid not null references public.pets (id) on delete cascade,
-  title        text not null,
-  icon         text not null default 'paw',
-  color        text not null default '#e8a34e',
-  paws         int  not null default 5 check (paws >= 0),
-  limit_day    int  not null default 0,
-  limit_week   int  not null default 0,
-  limit_month  int  not null default 0,
-  remind_hours int  not null default 0,
-  is_custom    boolean not null default false,
-  created_at   timestamptz not null default now()
+-- Таблица облачного доступа
+create table if not exists public.cloud_access (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid references public.profiles(id) on delete cascade not null,
+  cloud_id text unique not null,
+  display_name text,
+  display_color text,
+  created_at timestamp with time zone default timezone('utc'::text, now()) not null
 );
 
-create table public.logs (
-  id       uuid primary key default gen_random_uuid(),
-  pet_id   uuid not null references public.pets (id) on delete cascade,
-  act_id   uuid not null references public.activity_defs (id) on delete cascade,
-  owner_id uuid not null references auth.users (id) on delete cascade,
-  at       timestamptz not null default now()
+-- Таблица определений активностей
+create table if not exists public.activity_defs (
+  id uuid primary key default gen_random_uuid(),
+  pet_id uuid references public.pets(id) on delete cascade not null,
+  title text not null,
+  icon text not null,
+  color text not null,
+  paws integer not null default 1,
+  limit_day integer,
+  limit_week integer,
+  limit_month integer,
+  remind_h integer,
+  custom boolean default false,
+  created_at timestamp with time zone default timezone('utc'::text, now()) not null,
+  updated_at timestamp with time zone default timezone('utc'::text, now()) not null
 );
-create index logs_pet_at_idx  on public.logs (pet_id, at desc);
-create index logs_owner_at_ix on public.logs (owner_id, at desc);
 
--- Снапшот для быстрой двусторонней синхронизации клиентов
-create table public.sync_snapshots (
-  user_id    uuid primary key references auth.users (id) on delete cascade,
-  data       jsonb not null,
-  updated_at timestamptz not null default now()
+-- Таблица записей журнала
+create table if not exists public.logs (
+  id uuid primary key default gen_random_uuid(),
+  pet_id uuid references public.pets(id) on delete cascade not null,
+  act_id uuid references public.activity_defs(id) on delete cascade not null,
+  owner_id uuid references public.profiles(id) on delete cascade not null,
+  at timestamp with time zone default timezone('utc'::text, now()) not null,
+  img text,
+  on_behalf_of uuid references public.profiles(id),
+  created_at timestamp with time zone default timezone('utc'::text, now()) not null
 );
 
--- ---------- RLS ----------
+-- Таблица сообщений чата
+create table if not exists public.chat_messages (
+  id uuid primary key default gen_random_uuid(),
+  pet_id uuid references public.pets(id) on delete cascade not null,
+  author_id uuid references public.profiles(id) on delete cascade not null,
+  text text not null,
+  at timestamp with time zone default timezone('utc'::text, now()) not null,
+  created_at timestamp with time zone default timezone('utc'::text, now()) not null
+);
 
-alter table public.profiles      enable row level security;
-alter table public.pets          enable row level security;
-alter table public.pet_owners    enable row level security;
+-- Таблица ветеринарных событий
+create table if not exists public.vet_events (
+  id uuid primary key default gen_random_uuid(),
+  pet_id uuid references public.pets(id) on delete cascade not null,
+  kind text not null,
+  title text not null,
+  date date not null,
+  time time,
+  repeat text,
+  note text,
+  created_at timestamp with time zone default timezone('utc'::text, now()) not null,
+  updated_at timestamp with time zone default timezone('utc'::text, now()) not null
+);
+
+-- Таблица записей веса
+create table if not exists public.weights (
+  id uuid primary key default gen_random_uuid(),
+  pet_id uuid references public.pets(id) on delete cascade not null,
+  weight numeric(5,2) not null,
+  date date not null,
+  note text,
+  created_at timestamp with time zone default timezone('utc'::text, now()) not null
+);
+
+-- Таблица расходов
+create table if not exists public.expenses (
+  id uuid primary key default gen_random_uuid(),
+  pet_id uuid references public.pets(id) on delete cascade not null,
+  category text not null,
+  amount numeric(10,2) not null,
+  date date not null,
+  description text,
+  created_at timestamp with time zone default timezone('utc'::text, now()) not null
+);
+
+-- Таблица снапшотов для синхронизации
+create table if not exists public.sync_snapshots (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid references public.profiles(id) on delete cascade not null,
+   jsonb not null,
+  created_at timestamp with time zone default timezone('utc'::text, now()) not null
+);
+
+-- Таблица подписок на push-уведомления
+create table if not exists public.push_subscriptions (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid references public.profiles(id) on delete cascade not null,
+  endpoint text unique not null,
+  p256dh text not null,
+  auth text not null,
+  created_at timestamp with time zone default timezone('utc'::text, now()) not null
+);
+
+-- Индексы для оптимизации запросов
+create index if not exists idx_pets_owner_id on public.pets(owner_id);
+create index if not exists idx_pet_owners_pet_id on public.pet_owners(pet_id);
+create index if not exists idx_pet_owners_user_id on public.pet_owners(user_id);
+create index if not exists idx_activity_defs_pet_id on public.activity_defs(pet_id);
+create index if not exists idx_logs_pet_id on public.logs(pet_id);
+create index if not exists idx_logs_owner_id on public.logs(owner_id);
+create index if not exists idx_logs_at on public.logs(at);
+create index if not exists idx_chat_messages_pet_id on public.chat_messages(pet_id);
+create index if not exists idx_chat_messages_at on public.chat_messages(at);
+create index if not exists idx_vet_events_pet_id on public.vet_events(pet_id);
+create index if not exists idx_vet_events_date on public.vet_events(date);
+create index if not exists idx_weights_pet_id on public.weights(pet_id);
+create index if not exists idx_weights_date on public.weights(date);
+create index if not exists idx_expenses_pet_id on public.expenses(pet_id);
+create index if not exists idx_expenses_date on public.expenses(date);
+create index if not exists idx_sync_snapshots_user_id on public.sync_snapshots(user_id);
+create index if not exists idx_push_subscriptions_user_id on public.push_subscriptions(user_id);
+
+-- Включаем RLS для всех таблиц
+alter table public.profiles enable row level security;
+alter table public.pets enable row level security;
+alter table public.pet_owners enable row level security;
+alter table public.cloud_access enable row level security;
 alter table public.activity_defs enable row level security;
-alter table public.logs          enable row level security;
+alter table public.logs enable row level security;
+alter table public.chat_messages enable row level security;
+alter table public.vet_events enable row level security;
+alter table public.weights enable row level security;
+alter table public.expenses enable row level security;
 alter table public.sync_snapshots enable row level security;
+alter table public.push_subscriptions enable row level security;
 
--- Хелпер: является ли текущий пользователь участником питомца
-create or replace function public.is_pet_member(p uuid)
-returns boolean language sql stable security definer set search_path = public as $$
-  select exists (select 1 from public.pet_owners po
-                  where po.pet_id = p and po.user_id = auth.uid())
-      or exists (select 1 from public.pets pp
-                  where pp.id = p and pp.owner_id = auth.uid());
-$$;
-grant execute on function public.is_pet_member(uuid) to authenticated;
+-- RLS политики для profiles
+create policy "Users can view own profile"
+  on public.profiles for select
+  using (auth.uid() = id);
 
--- profiles: только свои
-create policy "profiles_all_self" on public.profiles
-  for all using (auth.uid() = id) with check (auth.uid() = id);
+create policy "Users can update own profile"
+  on public.profiles for update
+  using (auth.uid() = id);
 
--- pets: видят участники, создаёт/меняет владелец
-create policy "pets_select" on public.pets for select
-  using (owner_id = auth.uid() or public.is_pet_member(id));
-create policy "pets_insert" on public.pets for insert
-  with check (owner_id = auth.uid());
-create policy "pets_update" on public.pets for update
-  using (owner_id = auth.uid());
-create policy "pets_delete" on public.pets for delete
-  using (owner_id = auth.uid());
+-- RLS политики для pets
+create policy "Users can view own pets"
+  on public.pets for select
+  using (auth.uid() = owner_id);
 
--- pet_owners: читают участники; запись — через claim_invite или владельцу
-create policy "po_select" on public.pet_owners for select
-  using (user_id = auth.uid() or public.is_pet_member(pet_id));
-create policy "po_insert" on public.pet_owners for insert
-  with check (user_id = auth.uid() and public.is_pet_member(pet_id));
-create policy "po_delete" on public.pet_owners for delete
-  using (user_id = auth.uid()
-         or exists (select 1 from public.pets pp where pp.id = pet_id and pp.owner_id = auth.uid()));
+create policy "Users can insert own pets"
+  on public.pets for insert
+  with check (auth.uid() = owner_id);
 
--- activity_defs и logs: все участники питомца
-create policy "acts_select" on public.activity_defs for select
-  using (public.is_pet_member(pet_id));
-create policy "acts_insert" on public.activity_defs for insert
-  with check (public.is_pet_member(pet_id));
-create policy "acts_update" on public.activity_defs for update
-  using (public.is_pet_member(pet_id));
-create policy "acts_delete" on public.activity_defs for delete
-  using (public.is_pet_member(pet_id));
+create policy "Users can update own pets"
+  on public.pets for update
+  using (auth.uid() = owner_id);
 
-create policy "logs_select" on public.logs for select
-  using (public.is_pet_member(pet_id));
-create policy "logs_insert" on public.logs for insert
-  with check (public.is_pet_member(pet_id) and owner_id = auth.uid());
-create policy "logs_delete" on public.logs for delete
-  using (owner_id = auth.uid()
-         or exists (select 1 from public.pets pp where pp.id = pet_id and pp.owner_id = auth.uid()));
+create policy "Users can delete own pets"
+  on public.pets for delete
+  using (auth.uid() = owner_id);
 
--- snapshots: строго личные
-create policy "snap_all_self" on public.sync_snapshots
-  for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+-- RLS политики для pet_owners
+create policy "Users can view pet owners"
+  on public.pet_owners for select
+  using (auth.uid() = user_id);
 
--- ---------- Анти-чит: лимиты активностей (день/неделя/месяц) ----------
+create policy "Users can insert pet owners"
+  on public.pet_owners for insert
+  with check (auth.uid() = user_id);
 
-create or replace function public.enforce_log_limits()
-returns trigger language plpgsql security definer set search_path = public as $$
-declare
-  a  public.activity_defs;
-  c  bigint;
-  ds timestamptz; ws timestamptz; ms timestamptz;
+create policy "Users can delete pet owners"
+  on public.pet_owners for delete
+  using (auth.uid() = user_id);
+
+-- RLS политики для cloud_access
+create policy "Users can view own cloud access"
+  on public.cloud_access for select
+  using (auth.uid() = user_id);
+
+create policy "Users can insert own cloud access"
+  on public.cloud_access for insert
+  with check (auth.uid() = user_id);
+
+create policy "Users can update own cloud access"
+  on public.cloud_access for update
+  using (auth.uid() = user_id);
+
+-- RLS политики для activity_defs
+create policy "Users can view activity defs for own pets"
+  on public.activity_defs for select
+  using (
+    exists (
+      select 1 from public.pets
+      where pets.id = activity_defs.pet_id
+      and pets.owner_id = auth.uid()
+    )
+  );
+
+create policy "Users can insert activity defs for own pets"
+  on public.activity_defs for insert
+  with check (
+    exists (
+      select 1 from public.pets
+      where pets.id = activity_defs.pet_id
+      and pets.owner_id = auth.uid()
+    )
+  );
+
+create policy "Users can update activity defs for own pets"
+  on public.activity_defs for update
+  using (
+    exists (
+      select 1 from public.pets
+      where pets.id = activity_defs.pet_id
+      and pets.owner_id = auth.uid()
+    )
+  );
+
+create policy "Users can delete activity defs for own pets"
+  on public.activity_defs for delete
+  using (
+    exists (
+      select 1 from public.pets
+      where pets.id = activity_defs.pet_id
+      and pets.owner_id = auth.uid()
+    )
+  );
+
+-- RLS политики для logs
+create policy "Users can view logs for own pets"
+  on public.logs for select
+  using (
+    exists (
+      select 1 from public.pets
+      where pets.id = logs.pet_id
+      and pets.owner_id = auth.uid()
+    )
+  );
+
+create policy "Users can insert logs for own pets"
+  on public.logs for insert
+  with check (auth.uid() = owner_id);
+
+create policy "Users can delete own logs"
+  on public.logs for delete
+  using (auth.uid() = owner_id);
+
+-- RLS политики для chat_messages
+create policy "Users can view chat messages for own pets"
+  on public.chat_messages for select
+  using (
+    exists (
+      select 1 from public.pets
+      where pets.id = chat_messages.pet_id
+      and pets.owner_id = auth.uid()
+    )
+  );
+
+create policy "Users can insert chat messages for own pets"
+  on public.chat_messages for insert
+  with check (auth.uid() = author_id);
+
+-- RLS политики для vet_events
+create policy "Users can view vet events for own pets"
+  on public.vet_events for select
+  using (
+    exists (
+      select 1 from public.pets
+      where pets.id = vet_events.pet_id
+      and pets.owner_id = auth.uid()
+    )
+  );
+
+create policy "Users can insert vet events for own pets"
+  on public.vet_events for insert
+  with check (
+    exists (
+      select 1 from public.pets
+      where pets.id = vet_events.pet_id
+      and pets.owner_id = auth.uid()
+    )
+  );
+
+create policy "Users can update vet events for own pets"
+  on public.vet_events for update
+  using (
+    exists (
+      select 1 from public.pets
+      where pets.id = vet_events.pet_id
+      and pets.owner_id = auth.uid()
+    )
+  );
+
+create policy "Users can delete vet events for own pets"
+  on public.vet_events for delete
+  using (
+    exists (
+      select 1 from public.pets
+      where pets.id = vet_events.pet_id
+      and pets.owner_id = auth.uid()
+    )
+  );
+
+-- RLS политики для weights
+create policy "Users can view weights for own pets"
+  on public.weights for select
+  using (
+    exists (
+      select 1 from public.pets
+      where pets.id = weights.pet_id
+      and pets.owner_id = auth.uid()
+    )
+  );
+
+create policy "Users can insert weights for own pets"
+  on public.weights for insert
+  with check (
+    exists (
+      select 1 from public.pets
+      where pets.id = weights.pet_id
+      and pets.owner_id = auth.uid()
+    )
+  );
+
+create policy "Users can delete weights for own pets"
+  on public.weights for delete
+  using (
+    exists (
+      select 1 from public.pets
+      where pets.id = weights.pet_id
+      and pets.owner_id = auth.uid()
+    )
+  );
+
+-- RLS политики для expenses
+create policy "Users can view expenses for own pets"
+  on public.expenses for select
+  using (
+    exists (
+      select 1 from public.pets
+      where pets.id = expenses.pet_id
+      and pets.owner_id = auth.uid()
+    )
+  );
+
+create policy "Users can insert expenses for own pets"
+  on public.expenses for insert
+  with check (
+    exists (
+      select 1 from public.pets
+      where pets.id = expenses.pet_id
+      and pets.owner_id = auth.uid()
+    )
+  );
+
+create policy "Users can delete expenses for own pets"
+  on public.expenses for delete
+  using (
+    exists (
+      select 1 from public.pets
+      where pets.id = expenses.pet_id
+      and pets.owner_id = auth.uid()
+    )
+  );
+
+-- RLS политики для sync_snapshots
+create policy "Users can view own snapshots"
+  on public.sync_snapshots for select
+  using (auth.uid() = user_id);
+
+create policy "Users can insert own snapshots"
+  on public.sync_snapshots for insert
+  with check (auth.uid() = user_id);
+
+create policy "Users can update own snapshots"
+  on public.sync_snapshots for update
+  using (auth.uid() = user_id);
+
+create policy "Users can delete own snapshots"
+  on public.sync_snapshots for delete
+  using (auth.uid() = user_id);
+
+-- RLS политики для push_subscriptions
+create policy "Users can view own push subscriptions"
+  on public.push_subscriptions for select
+  using (auth.uid() = user_id);
+
+create policy "Users can insert own push subscriptions"
+  on public.push_subscriptions for insert
+  with check (auth.uid() = user_id);
+
+create policy "Users can delete own push subscriptions"
+  on public.push_subscriptions for delete
+  using (auth.uid() = user_id);
+
+-- Функция для автоматического обновления updated_at
+create or replace function public.handle_updated_at()
+returns trigger as $$
 begin
-  select * into a from public.activity_defs where id = new.act_id;
-  if a is null then
-    raise exception 'unknown activity';
-  end if;
-  ds := date_trunc('day',   new.at);
-  ws := date_trunc('week',  new.at);  -- Postgres: неделя с понедельника
-  ms := date_trunc('month', new.at);
-
-  if a.limit_day > 0 then
-    select count(*) into c from public.logs
-     where act_id = new.act_id and at >= ds and at < ds + interval '1 day';
-    if c >= a.limit_day then raise exception 'day limit reached'; end if;
-  end if;
-  if a.limit_week > 0 then
-    select count(*) into c from public.logs
-     where act_id = new.act_id and at >= ws and at < ws + interval '1 week';
-    if c >= a.limit_week then raise exception 'week limit reached'; end if;
-  end if;
-  if a.limit_month > 0 then
-    select count(*) into c from public.logs
-     where act_id = new.act_id and at >= ms and at < ms + interval '1 month';
-    if c >= a.limit_month then raise exception 'month limit reached'; end if;
-  end if;
+  new.updated_at = now();
   return new;
-end $$;
+end;
+$$ language plpgsql security definer;
 
-create trigger logs_limit_check
-  before insert on public.logs
-  for each row execute function public.enforce_log_limits();
+-- Триггеры для автоматического обновления updated_at
+create trigger on_profiles_updated
+  before update on public.profiles
+  for each row execute procedure public.handle_updated_at();
 
--- ---------- Приглашение второго хозяина по коду ----------
+create trigger on_pets_updated
+  before update on public.pets
+  for each row execute procedure public.handle_updated_at();
 
-create or replace function public.claim_invite(code text)
-returns uuid language plpgsql security definer set search_path = public as $$
-declare
-  pid uuid;
-begin
-  select id into pid from public.pets where invite_code = code;
-  if pid is null then
-    raise exception 'invalid invite code';
-  end if;
-  insert into public.pet_owners (pet_id, user_id)
-  values (pid, auth.uid())
-  on conflict (pet_id, user_id) do nothing;
-  return pid;
-end $$;
+create trigger on_activity_defs_updated
+  before update on public.activity_defs
+  for each row execute procedure public.handle_updated_at();
 
-grant execute on function public.claim_invite(text) to authenticated;
-
--- ---------- Автопрофиль при регистрации ----------
-
-create or replace function public.handle_new_user()
-returns trigger language plpgsql security definer set search_path = public as $$
-begin
-  insert into public.profiles (id, email, name)
-  values (new.id, new.email,
-          coalesce(new.raw_user_meta_data ->> 'name', 'Хозяин'))
-  on conflict (id) do nothing;
-  return new;
-end $$;
-
-create trigger on_auth_user_created
-  after insert on auth.users
-  for each row execute function public.handle_new_user();
+create trigger on_vet_events_updated
+  before update on public.vet_events
+  for each row execute procedure public.handle_updated_at();
