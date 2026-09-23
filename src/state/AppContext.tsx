@@ -8,7 +8,7 @@ import type {
 import { genInvite, uid } from "../lib/types";
 import {
   HOUR, computeDue, ensureDemo, limitsFor, loadActivePet, loadDB, loadNotif, loadSession,
-  loadTelegram, loadTheme, loginUser, makeGuest, makePetWithActs, registerUser, saveActivePet, saveDB,
+  loadTelegram, loadTheme, loginUser, makeGuest, makePetWithActs, plural, registerUser, saveActivePet, saveDB,
   saveNotif, saveSession, saveTelegram, saveTheme, startOfDay,
 } from "../lib/db";
 import { generateVetEventsForPet } from "../lib/vet-schedule";
@@ -416,7 +416,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   /* ================= активности (CRUD + анти-чит) ================= */
 
-  /** Фаза 3.3: создание своей активности (иконка, цвет, лапки, лимиты день/нед/мес, remindH) */
+  /** Фаза 3.3: создание своей активности (иконка, цвет, лапки, лимиты день/нед/мес, remindH).
+   *  Возвращает id новой активности либо текст ошибки. */
   const addAct: AppCtx["addAct"] = (v) => {
     if (!user || !pet) return "Сначала заведите питомца";
     const title = v.title.trim();
@@ -435,7 +436,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     };
     setDb((d) => ({ ...d, acts: [...d.acts, a] }));
     toast(`Активность «${title}» добавлена`, "ok");
-    return null;
+    return a.id;
   };
 
   /** Фаза 3.3: редактирование активности (стандартной или своей) */
@@ -446,7 +447,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         if (a.id !== id) return a;
         const next: ActivityDef = { ...a, ...patch };
         // нормализуем числовые поля: отрицательных и дробных лимитов не бывает
-        next.paws = Math.max(1, Math.round(Number(next.paws) || 1));
+        next.paws = Math.max(1, Math.min(50, Math.round(Number(next.paws) || 1)));
         for (const k of ["limitDay", "limitWeek", "limitMonth", "remindH"] as const) {
           next[k] = Math.max(0, Math.round(Number(next[k]) || 0));
         }
@@ -493,6 +494,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       onBehalfOf: onBehalfOf && onBehalfOf !== me.id ? me.id : undefined,
     };
     setDb((d) => ({ ...d, logs: [...d.logs, log] }));
+    // Фаза 4.3: начисление лапок + тост «+N лапок»
+    toast(`+${act.paws} ${plural(act.paws, "лапка", "лапки", "лапок")}`, "ok");
     trackActivityComplete({ activityId: act.id, activityTitle: act.title, paws: act.paws, hasPhoto: !!img });
     // тяжёлое фото пробуем выгрузить в облако, чтобы localStorage не лопнул
     if (img && img.startsWith("data:") && img.length > 300_000 && loadCloudConfig()) {

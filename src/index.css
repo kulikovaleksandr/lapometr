@@ -65,6 +65,48 @@ body {
 
 .border-line { border-color: var(--line); }
 
+/* Tailwind-хелперы, используемые в компонентах (v4 не генерирует их из CSS-переменных) */
+.text-mute { color: var(--muted); }
+.text-accent-ink { color: var(--accent-ink); }
+.bg-surface { background-color: var(--surface); }
+.font-display { font-family: 'Unbounded', ui-sans-serif, system-ui, sans-serif; }
+
+/* ---------- Анимации (используются классами anim-*, breathe, reveal, paw-fly) ---------- */
+@keyframes fadeup { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+@keyframes fadein { from { opacity: 0; } to { opacity: 1; } }
+@keyframes popin { 0% { opacity: 0; transform: scale(0.6); } 70% { transform: scale(1.06); } 100% { opacity: 1; transform: scale(1); } }
+@keyframes breathe { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.035); } }
+@keyframes pulsedot { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.45; transform: scale(0.8); } }
+@keyframes pawfly {
+  0% { opacity: 1; transform: translate(0, 0) rotate(0deg) scale(1); }
+  100% { opacity: 0; transform: translate(var(--dx), var(--dy)) rotate(var(--r)) scale(var(--s)); }
+}
+
+.anim-fadeup { animation: fadeup 0.45s cubic-bezier(0.22, 1, 0.36, 1) both; }
+.anim-fade { animation: fadein 0.35s ease both; }
+.anim-pop { animation: popin 0.35s cubic-bezier(0.22, 1, 0.36, 1) both; }
+.breathe { animation: breathe 4.5s ease-in-out infinite; }
+.pulse-dot { animation: pulsedot 1.6s ease-in-out infinite; }
+.paw-fly {
+  position: absolute; left: 50%; top: 50%;
+  color: var(--accent);
+  animation: pawfly 0.9s ease-out forwards;
+}
+
+/* Появление при скролле (компонент Reveal) */
+.reveal { opacity: 0; transform: translateY(14px); transition: opacity 0.5s ease, transform 0.5s ease; }
+.reveal.on { opacity: 1; transform: none; }
+
+/* Полоса-соединитель таймлайна в журнале (Фаза 4.1) */
+.tl-line {
+  margin-top: 4px; margin-bottom: -2px; min-height: 18px;
+  background: linear-gradient(180deg, color-mix(in oklab, var(--accent) 45%, var(--line)), var(--line));
+}
+
+/* Карточка с «оживанием» при наведении */
+.card-i { transition: transform 0.25s ease, box-shadow 0.25s ease, border-color 0.25s ease; }
+.card-i:hover { border-color: color-mix(in oklab, var(--accent) 40%, var(--line)); box-shadow: 0 8px 28px rgba(0, 0, 0, 0.07); }
+
 /* Карточки */
 .card {
   background-color: var(--surface);

@@ -1,4 +1,4 @@
-/**
+/*
  * Фаза 3 — Питомец и активности: интеграционные тесты контекста приложения.
  * 3.1 createPet (тип, кличка, порода, дата рождения, цвет)
  * 3.2 12 стандартных активностей с лапками/лимитами/remindH
@@ -7,10 +7,11 @@
  */
 import { describe, it, expect, beforeEach } from "vitest";
 import { renderHook, act } from "@testing-library/react";
-import type { ReactNode } from "react";
+import { createElement, type ReactNode } from "react";
 import { AppProvider, useApp } from "../state/AppContext";
 
-const wrapper = ({ children }: { children: ReactNode }) => <AppProvider>{children}</AppProvider>;
+const wrapper = ({ children }: { children: ReactNode }) =>
+  createElement(AppProvider, null, children);
 
 beforeEach(() => localStorage.clear());
 

@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useApp } from "../state/AppContext";
-import { Chip, EmptyState, Modal, Reveal, Seg, UserAvatar, cx, inputCls } from "../components/ui";
+import { Burst, Chip, EmptyState, Modal, Reveal, Seg, UserAvatar, cx, inputCls } from "../components/ui";
 import { Icon } from "../components/icons";
 import { DAY, dayLabel, fmtNum, fmtTime, pawsOf, plural, startOfDay } from "../lib/db";
 import type { LogEntry } from "../lib/types";
@@ -13,6 +13,9 @@ export function JournalScreen() {
   const [actF, setActF] = useState<string>("all");
   const [period, setPeriod] = useState<Period>("30");
   const [shot, setShot] = useState<LogEntry | null>(null);
+  // Фаза 4.3: paw-burst на кружке записи при клике
+  const [burstId, setBurstId] = useState<string | null>(null);
+  const [burstSeed, setBurstSeed] = useState(0);
 
   const from = period === "all" ? 0 : startOfDay(now) - (Number(period) - 1) * DAY;
 
@@ -103,17 +106,19 @@ export function JournalScreen() {
                     <li key={l.id} className="anim-fadeup grid grid-cols-[46px_1fr]" style={{ animationDelay: `${Math.min(i, 10) * 40}ms` }}>
                       {/* рельса: кружок + соединительная полоса */}
                       <div className="flex flex-col items-center">
-                        <span
-                          className="z-10 inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full border-2 shadow-sm transition-transform hover:scale-110"
+                        <button
+                          onClick={() => { setBurstId(l.id); setBurstSeed((s) => s + 1); }}
+                          className="relative z-10 inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full border-2 shadow-sm transition-transform hover:scale-110"
                           style={{
                             background: `color-mix(in oklab, ${a?.color ?? "#888"} 25%, var(--surface))`,
                             borderColor: `color-mix(in oklab, ${a?.color ?? "#888"} 55%, var(--line))`,
                             color: a?.color ?? "var(--muted)",
                           }}
-                          title={a?.title}
+                          title={`${a?.title ?? "Активность"} · +${a?.paws ?? 0} лапок`}
                         >
                           <Icon name={a?.icon ?? "paw"} size={19} />
-                        </span>
+                          {burstId === l.id && <span key={burstSeed} className="absolute inset-0"><Burst seed={burstSeed} /></span>}
+                        </button>
                         {!last && <span className="tl-line w-[3px] flex-1 rounded-full" />}
                       </div>
                       {/* содержимое */}

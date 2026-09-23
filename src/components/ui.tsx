@@ -277,9 +277,10 @@ const TOAST_STYLE: Record<ToastKind, string> = {
   warn: "border-warn/40 bg-raise text-warn",
   info: "border-line bg-raise text-ink",
 };
-export function toast(msg: string, kind: ToastKind = "info") {
+// Фаза 4.3: стрелочная обёртка — тесты могут подменять ui.toast через vi.spyOn
+export const toast = (msg: string, kind: ToastKind = "info") => {
   pushToast?.({ id: Date.now() + Math.random(), msg, kind });
-}
+};
 export function Toaster() {
   const [items, setItems] = useState<ToastItem[]>([]);
   useEffect(() => {
