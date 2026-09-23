@@ -1,67 +1,62 @@
+import { useState } from 'react';
 import { AppProvider, useApp } from './state/AppContext';
 import { AuthScreen } from './screens/AuthScreen';
 import { HomeScreen } from './screens/HomeScreen';
 
+type Screen = 'auth' | 'home';
+
 function AppContent() {
   const { currentUser, currentPet } = useApp();
+  const [screen, setScreen] = useState<Screen>(() => {
+    if (!currentUser) return 'auth';
+    return 'home';
+  });
 
-  if (!currentUser) {
+  // Экран авторизации
+  if (screen === 'auth' || !currentUser) {
     return <AuthScreen />;
   }
 
-  if (!currentPet) {
-    return (
-      <div style={{ 
-        minHeight: '100vh', 
-        display: 'flex', 
-        alignItems: 'center', 
-        justifyContent: 'center',
-        background: 'var(--bg)',
-        padding: '2rem'
+  // Главный экран
+  return (
+    <div style={{ minHeight: '100vh', background: 'var(--bg)' }}>
+      {/* Шапка */}
+      <header style={{
+        background: 'var(--surface)',
+        borderBottom: '1px solid var(--line)',
+        padding: '1rem 2rem',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
       }}>
-        <div style={{
-          background: 'var(--surface)',
-          borderRadius: '0.75rem',
-          padding: '2rem',
-          maxWidth: '500px',
-          width: '100%',
-          textAlign: 'center'
-        }}>
-          <div style={{ fontSize: '4rem', marginBottom: '1rem' }}>🐾</div>
-          <h2 style={{ fontSize: '1.5rem', fontWeight: 'bold', marginBottom: '0.5rem', color: 'var(--text)' }}>
-            Добро пожаловать!
-          </h2>
-          <p style={{ color: 'var(--muted)', marginBottom: '1.5rem' }}>
-            Создайте вашего первого питомца, чтобы начать
-          </p>
+        <h1 style={{ color: '#f59e0b', margin: 0, fontSize: '1.5rem' }}>🐾 Лапометр</h1>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+          <span style={{ color: 'var(--muted)' }}>{currentUser.name}</span>
           <button
             onClick={() => {
-              const name = prompt('Введите имя питомца:');
-              if (name) {
-                const species = prompt('Вид питомца (cat/dog/rabbit/parrot/hamster/fish):', 'cat') || 'cat';
-                // Используем addPet из контекста через window
-                (window as any).__addPet?.(name, species);
-              }
+              localStorage.removeItem('lapometr.session');
+              window.location.reload();
             }}
             style={{
-              padding: '0.75rem 1.5rem',
+              padding: '0.5rem 1rem',
               borderRadius: '0.5rem',
-              border: 'none',
-              background: 'var(--accent)',
-              color: 'var(--accent-ink)',
-              fontSize: '1rem',
-              fontWeight: 600,
-              cursor: 'pointer'
+              border: '1px solid var(--line)',
+              background: 'var(--surface2)',
+              color: 'var(--text)',
+              cursor: 'pointer',
             }}
           >
-            Создать питомца
+            Выйти
           </button>
         </div>
-      </div>
-    );
-  }
+      </header>
 
-  return <HomeScreen />;
+      {/* Контент */}
+      <main style={{ padding: '2rem', maxWidth: '1200px', margin: '0 auto' }}>
+        <HomeScreen />
+      </main>
+    </div>
+  );
 }
 
 export default function App() {
