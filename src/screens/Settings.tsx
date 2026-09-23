@@ -980,7 +980,7 @@ function CloudPanel() {
     setBusy("sync"); setErr(null);
     const r = await fetchDivergence();
     setBusy(null);
-    if (typeof r === "string") { setErr(r); return; }
+    if (!r) { setErr("Не удалось получить расхождения — облако недоступно или аккаунт не привязан"); return; }
     const hasIncoming = divergenceTotal(r.incoming) > 0;
     const hasOutgoing = divergenceTotal(r.outgoing) > 0;
     if (!hasIncoming && !hasOutgoing) {

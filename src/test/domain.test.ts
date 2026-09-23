@@ -22,10 +22,10 @@ describe("Доменная логика", () => {
 
       const result = limitsFor(act, logs, now);
 
-      expect(result.blocked).toBeUndefined();
-      expect(result.day).toBe(0);
-      expect(result.week).toBe(0);
-      expect(result.month).toBe(0);
+      expect(result.blocked).toBeNull();
+      expect(result.day).toBeNull();
+      expect(result.week).toBeNull();
+      expect(result.month).toBeNull();
     });
 
     it("должен блокировать при превышении дневного лимита", () => {
@@ -50,8 +50,8 @@ describe("Доменная логика", () => {
 
       const result = limitsFor(act, logs, now);
 
-      expect(result.blocked).toBeDefined();
-      expect(result.day).toBe(3);
+      expect(result.blocked).toBeTruthy();
+      expect(result.day).toEqual({ used: 3, max: 3 });
     });
 
     it("должен разрешать при дневном лимите, если записей меньше", () => {
@@ -75,8 +75,8 @@ describe("Доменная логика", () => {
 
       const result = limitsFor(act, logs, now);
 
-      expect(result.blocked).toBeUndefined();
-      expect(result.day).toBe(2);
+      expect(result.blocked).toBeNull();
+      expect(result.day).toEqual({ used: 2, max: 3 });
     });
   });
 
@@ -180,7 +180,9 @@ describe("Доменная логика", () => {
 
       expect(result.length).toBe(1);
       expect(result[0].act.id).toBe("act1");
-      expect(result[0].overdueMin).toBe(0);
+      // срок через час: overdueMin отрицательный (ещё не просрочено)
+      expect(result[0].overdueMin).toBeLessThanOrEqual(0);
+      expect(result[0].overdueMin).toBeGreaterThan(-60 * 1.5);
     });
   });
 

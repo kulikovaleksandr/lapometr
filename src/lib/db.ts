@@ -393,10 +393,17 @@ export function nextOccurrence(ev: VetEvent, now: number): number {
   const today = startOfDay(now);
   let d = base.getTime();
   if (ev.repeat === "monthly") {
-    const anchor = new Date(base);
+    // якорь по дню месяца: 31-е в коротком месяце переносится на его последний день
+    const dayOfMonth = base.getDate();
+    const anchor = new Date(base.getFullYear(), base.getMonth(), 1);
+    const clamp = () => {
+      const last = new Date(anchor.getFullYear(), anchor.getMonth() + 1, 0).getDate();
+      return new Date(anchor.getFullYear(), anchor.getMonth(), Math.min(dayOfMonth, last)).getTime();
+    };
+    d = clamp();
     while (d < today) {
       anchor.setMonth(anchor.getMonth() + 1);
-      d = anchor.getTime();
+      d = clamp();
     }
   } else if (ev.repeat === "yearly") {
     const anchor = new Date(base);

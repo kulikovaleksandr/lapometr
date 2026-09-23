@@ -1,60 +1,73 @@
-import { useState } from 'react';
-import { AppProvider, useApp } from './state/AppContext';
-import { AuthScreen } from './screens/AuthScreen';
-import { HomeScreen } from './screens/HomeScreen';
+import { useEffect, useState } from "react";
+import { AppProvider, useApp } from "./state/AppContext";
+import { Toaster } from "./components/ui";
+import { Icon } from "./components/icons";
+import { AuthScreen } from "./screens/Auth";
+import { OnboardingScreen } from "./screens/Onboarding";
+import { HomeScreen } from "./screens/Home";
+import { DuelScreen } from "./screens/Duel";
+import { JournalScreen } from "./screens/Journal";
+import { StatsScreen } from "./screens/Stats";
+import { VetScreen } from "./screens/Vet";
+import { SettingsScreen } from "./screens/Settings";
 
-type Screen = 'auth' | 'home';
+export type Tab = "home" | "duel" | "journal" | "stats" | "vet" | "settings";
 
-function AppContent() {
-  const { currentUser, currentPet } = useApp();
-  const [screen, setScreen] = useState<Screen>(() => {
-    if (!currentUser) return 'auth';
-    return 'home';
-  });
+const TABS: { id: Tab; label: string; icon: Parameters<typeof Icon>[0]["name"] }[] = [
+  { id: "home", label: "Дом", icon: "home" },
+  { id: "duel", label: "Дуэль", icon: "trophy" },
+  { id: "journal", label: "Журнал", icon: "book" },
+  { id: "stats", label: "Статы", icon: "chart" },
+  { id: "vet", label: "Вет", icon: "stetho" },
+  { id: "settings", label: "Ещё", icon: "gear" },
+];
 
-  // Экран авторизации
-  if (screen === 'auth' || !currentUser) {
-    return <AuthScreen />;
-  }
+function Shell() {
+  const { user, pet, toast } = useApp();
+  const [tab, setTab] = useState<Tab>("home");
 
-  // Главный экран
+  // при выходе / смене пользователя возвращаемся на «дом»
+  useEffect(() => { setTab("home"); }, [user?.id]);
+
+  if (!user) return <AuthScreen />;
+  if (!pet) return <OnboardingScreen />;
+
+  const copyCode = (code: string) => {
+    navigator.clipboard?.writeText(code)
+      .then(() => toast("Код приглашения скопирован", "ok"))
+      .catch(() => toast(`Код: ${code}`, "info"));
+  };
+
   return (
-    <div style={{ minHeight: '100vh', background: 'var(--bg)' }}>
-      {/* Шапка */}
-      <header style={{
-        background: 'var(--surface)',
-        borderBottom: '1px solid var(--line)',
-        padding: '1rem 2rem',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-      }}>
-        <h1 style={{ color: '#f59e0b', margin: 0, fontSize: '1.5rem' }}>🐾 Лапометр</h1>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-          <span style={{ color: 'var(--muted)' }}>{currentUser.name}</span>
-          <button
-            onClick={() => {
-              localStorage.removeItem('lapometr.session');
-              window.location.reload();
-            }}
-            style={{
-              padding: '0.5rem 1rem',
-              borderRadius: '0.5rem',
-              border: '1px solid var(--line)',
-              background: 'var(--surface2)',
-              color: 'var(--text)',
-              cursor: 'pointer',
-            }}
-          >
-            Выйти
-          </button>
-        </div>
-      </header>
-
-      {/* Контент */}
-      <main style={{ padding: '2rem', maxWidth: '1200px', margin: '0 auto' }}>
-        <HomeScreen />
+    <div className="flex min-h-screen flex-col">
+      <main className="mx-auto w-full max-w-3xl flex-1 px-4 pb-28 pt-5">
+        {tab === "home" && <HomeScreen onNav={setTab} />}
+        {tab === "duel" && <DuelScreen onCopy={copyCode} />}
+        {tab === "journal" && <JournalScreen />}
+        {tab === "stats" && <StatsScreen />}
+        {tab === "vet" && <VetScreen />}
+        {tab === "settings" && <SettingsScreen onCopy={copyCode} />}
       </main>
+
+      {/* нижняя навигация */}
+      <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-line bg-surface/95 backdrop-blur">
+        <div className="mx-auto flex w-full max-w-3xl items-stretch justify-between px-2 py-1.5">
+          {TABS.map((t) => (
+            <button
+              key={t.id}
+              onClick={() => setTab(t.id)}
+              className={
+                "flex flex-1 flex-col items-center gap-0.5 rounded-xl py-1.5 text-[10.5px] font-bold transition-colors " +
+                (tab === t.id ? "text-accent" : "text-mute hover:text-ink")
+              }
+              aria-current={tab === t.id ? "page" : undefined}
+            >
+              <Icon name={t.icon} size={20} />
+              {t.label}
+            </button>
+          ))}
+        </div>
+      </nav>
     </div>
   );
 }
@@ -62,7 +75,8 @@ function AppContent() {
 export default function App() {
   return (
     <AppProvider>
-      <AppContent />
+      <Shell />
+      <Toaster />
     </AppProvider>
   );
 }
