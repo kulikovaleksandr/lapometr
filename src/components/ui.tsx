@@ -266,3 +266,36 @@ export function Reveal({ children, delay = 0, className = "" }:
     </div>
   );
 }
+
+/* ---------- Тосты (глобальные всплывающие подсказки) ---------- */
+type ToastKind = "ok" | "err" | "info" | "warn";
+interface ToastItem { id: number; msg: string; kind: ToastKind }
+let pushToast: ((t: ToastItem) => void) | null = null;
+const TOAST_STYLE: Record<ToastKind, string> = {
+  ok: "border-ok/40 bg-raise text-ok",
+  err: "border-danger/40 bg-raise text-danger",
+  warn: "border-warn/40 bg-raise text-warn",
+  info: "border-line bg-raise text-ink",
+};
+export function toast(msg: string, kind: ToastKind = "info") {
+  pushToast?.({ id: Date.now() + Math.random(), msg, kind });
+}
+export function Toaster() {
+  const [items, setItems] = useState<ToastItem[]>([]);
+  useEffect(() => {
+    pushToast = (t) => {
+      setItems((arr) => [...arr.slice(-3), t]);
+      setTimeout(() => setItems((arr) => arr.filter((x) => x.id !== t.id)), 3600);
+    };
+    return () => { pushToast = null; };
+  }, []);
+  return (
+    <div className="pointer-events-none fixed inset-x-0 bottom-20 z-[90] flex flex-col items-center gap-2 px-4 sm:bottom-6">
+      {items.map((t) => (
+        <div key={t.id} className={cx("anim-fadeup pointer-events-auto max-w-md rounded-xl border px-4 py-2.5 text-[13px] font-semibold shadow-lg backdrop-blur", TOAST_STYLE[t.kind])}>
+          {t.msg}
+        </div>
+      ))}
+    </div>
+  );
+}

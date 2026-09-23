@@ -1,7 +1,7 @@
 // Основные типы для приложения Лапометр
 
 export type Species = 'cat' | 'dog' | 'rabbit' | 'parrot' | 'hamster' | 'fish';
-export type IconName = 'paw' | 'heart' | 'spark' | 'book' | 'trophy' | 'chart' | 'settings' | 'plus' | 'check' | 'x' | 'feed' | 'water' | 'litter' | 'brush' | 'play' | 'eyes' | 'ears' | 'walk' | 'nails' | 'bath' | 'tooth' | 'bell' | 'flame' | 'users' | 'gear' | 'out' | 'copy' | 'crown' | 'moon' | 'sun' | 'home' | 'camera' | 'edit' | 'trash' | 'clock' | 'info' | 'chev' | 'download' | 'upload' | 'cloud' | 'alert' | 'dot' | 'calendar' | 'stetho' | 'send' | 'repeat' | 'user' | 'globe' | 'share';
+export type IconName = 'paw' | 'heart' | 'spark' | 'book' | 'trophy' | 'chart' | 'settings' | 'plus' | 'check' | 'x' | 'feed' | 'water' | 'pet' | 'litter' | 'brush' | 'play' | 'eyes' | 'ears' | 'walk' | 'nails' | 'bath' | 'pill' | 'syringe' | 'tooth' | 'bell' | 'flame' | 'users' | 'gear' | 'out' | 'copy' | 'crown' | 'moon' | 'sun' | 'home' | 'camera' | 'edit' | 'trash' | 'clock' | 'info' | 'chev' | 'download' | 'upload' | 'cloud' | 'alert' | 'dot' | 'calendar' | 'stetho' | 'send' | 'repeat' | 'user' | 'globe' | 'share';
 export type UserRole = 'owner' | 'helper';
 export type ThemeId = 'night' | 'day' | 'latte' | 'forest' | 'olive';
 export type VetKind = 'shot' | 'pill' | 'vet' | 'check' | 'other';
@@ -44,24 +44,28 @@ export interface Activity {
   paws: number;
   icon: IconName;
   color: string;
-  limitDay?: number;
-  limitWeek?: number;
-  limitMonth?: number;
-  remindH?: number;
+  /** Дневной лимит, 0 = без лимита */
+  limitDay: number;
+  /** Недельный лимит, 0 = без лимита */
+  limitWeek: number;
+  /** Месячный лимит, 0 = без лимита */
+  limitMonth: number;
+  /** Интервал напоминания в часах, 0 = выключено */
+  remindH: number;
+  /** Пользовательская активность (создана хозяином, а не стандартный набор) */
+  custom?: boolean;
 }
 
 export type ActivityDef = Activity;
 
 export interface LogEntry {
   id: string;
-  activityId: string;
   actId: string;
-  userId: string;
   ownerId: string;
   petId: string;
-  timestamp: number;
   at: number;
   img?: string;
+  /** Запись сделана от имени другого хозяина (помощник) */
   onBehalfOf?: string;
 }
 
@@ -129,15 +133,14 @@ export interface DB {
   v: number;
   users: User[];
   pets: Pet[];
-  activities: Activity[];
+  /** Активности (определения) питомцев — каноническое поле */
   acts: Activity[];
   logs: LogEntry[];
   chat: ChatMessage[];
   events: VetEvent[];
   weights: WeightEntry[];
   expenses: Expense[];
-  seasonSettings: Record<string, SeasonSettings>;
-  monthlyResults: MonthlyResult[];
+  telegram?: TelegramCfg;
 }
 
 export const SCHEMA_VERSION = 5;
@@ -151,23 +154,23 @@ export const THEMES: { id: ThemeId; name: string; bg: string; swatch: string }[]
 ];
 
 export const LEVELS = [
-  { min: 0, title: 'Знакомство', emoji: '🐣' },
-  { min: 100, title: 'Заботливый', emoji: '🐾' },
-  { min: 500, title: 'Опытный', emoji: '⭐' },
-  { min: 1000, title: 'Мастер', emoji: '🏆' },
-  { min: 5000, title: 'Легенда', emoji: '👑' },
+  { at: 0, t: 'Знакомство', emoji: '🐣' },
+  { at: 100, t: 'Заботливый', emoji: '🐾' },
+  { at: 500, t: 'Опытный', emoji: '⭐' },
+  { at: 1000, t: 'Мастер', emoji: '🏆' },
+  { at: 5000, t: 'Легенда', emoji: '👑' },
 ];
 
 export function levelFor(paws: number) {
   for (let i = LEVELS.length - 1; i >= 0; i--) {
-    if (paws >= LEVELS[i].min) {
+    if (paws >= LEVELS[i].at) {
       const current = LEVELS[i];
       const next = LEVELS[i + 1];
-      const prog = next ? (paws - current.min) / (next.min - current.min) : 1;
-      return { ...current, prog, idx: i, next };
+      const prog = next ? (paws - current.at) / (next.at - current.at) : 1;
+      return { ...current, title: current.t, prog, idx: i, next };
     }
   }
-  return { ...LEVELS[0], prog: 0, idx: 0, next: LEVELS[1] };
+  return { ...LEVELS[0], title: LEVELS[0].t, prog: 0, idx: 0, next: LEVELS[1] };
 }
 
 export const uid = () => Math.random().toString(36).substring(2) + Date.now().toString(36);
