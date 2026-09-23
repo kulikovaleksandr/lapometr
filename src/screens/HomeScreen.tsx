@@ -1,17 +1,109 @@
 // Главный экран приложения
+import { useState } from 'react';
 import { useApp } from '../state/AppContext';
 import { Icon } from '../components/Icon';
 
 export function HomeScreen() {
-  const { db, currentUser, currentPet, logActivity } = useApp();
+  const { db, currentUser, currentPet, logActivity, addPet } = useApp();
+  const [showPetForm, setShowPetForm] = useState(false);
+  const [petName, setPetName] = useState('');
+  const [petSpecies, setPetSpecies] = useState<'cat' | 'dog' | 'rabbit' | 'parrot' | 'hamster' | 'fish'>('cat');
+  const [petBirthday, setPetBirthday] = useState('');
 
-  if (!currentUser || !currentPet) {
+  if (!currentUser) {
+    return null;
+  }
+
+  if (!currentPet) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-bg">
-        <div className="text-center">
-          <div className="text-6xl mb-4">🐾</div>
-          <h2 className="text-2xl font-bold text-ink mb-2">Добро пожаловать!</h2>
-          <p className="text-muted">Создайте питомца, чтобы начать</p>
+      <div className="min-h-screen flex items-center justify-center bg-bg p-4">
+        <div className="card max-w-md w-full p-8">
+          <div className="text-center mb-6">
+            <div className="text-6xl mb-4">🐾</div>
+            <h2 className="text-2xl font-bold text-ink mb-2">Добро пожаловать!</h2>
+            <p className="text-muted">Создайте питомца, чтобы начать</p>
+          </div>
+
+          {!showPetForm ? (
+            <button
+              onClick={() => setShowPetForm(true)}
+              className="btn btn-primary w-full"
+            >
+              <Icon name="plus" size={20} />
+              Создать питомца
+            </button>
+          ) : (
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (petName.trim()) {
+                  addPet(petName, petSpecies, petBirthday || undefined);
+                  setShowPetForm(false);
+                  setPetName('');
+                  setPetSpecies('cat');
+                  setPetBirthday('');
+                }
+              }}
+              className="space-y-4"
+            >
+              <div>
+                <label className="label">Кличка питомца</label>
+                <input
+                  type="text"
+                  value={petName}
+                  onChange={(e) => setPetName(e.target.value)}
+                  className="input"
+                  placeholder="Например, Барсик"
+                  required
+                  autoFocus
+                />
+              </div>
+
+              <div>
+                <label className="label">Вид питомца</label>
+                <select
+                  value={petSpecies}
+                  onChange={(e) => setPetSpecies(e.target.value as typeof petSpecies)}
+                  className="input"
+                >
+                  <option value="cat">🐱 Кошка</option>
+                  <option value="dog">🐶 Собака</option>
+                  <option value="rabbit">🐰 Кролик</option>
+                  <option value="parrot">🦜 Попугай</option>
+                  <option value="hamster">🐹 Хомяк</option>
+                  <option value="fish">🐠 Рыбка</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="label">Дата рождения (необязательно)</label>
+                <input
+                  type="date"
+                  value={petBirthday}
+                  onChange={(e) => setPetBirthday(e.target.value)}
+                  className="input"
+                />
+              </div>
+
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowPetForm(false);
+                    setPetName('');
+                    setPetSpecies('cat');
+                    setPetBirthday('');
+                  }}
+                  className="btn btn-ghost flex-1"
+                >
+                  Отмена
+                </button>
+                <button type="submit" className="btn btn-primary flex-1">
+                  Создать
+                </button>
+              </div>
+            </form>
+          )}
         </div>
       </div>
     );
