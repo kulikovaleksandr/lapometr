@@ -774,6 +774,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, []);
 
   /* ---- напоминания: браузерные уведомления + Telegram ---- */
+  const notifSentRef = useRef<Set<string>>(new Set()); // дедупликация браузерных уведомлений по ключу actId@dueAt
   useEffect(() => {
     const check = () => {
       const cur = ref.current;
@@ -781,12 +782,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const myPets = cur.db.pets.filter((p) => p.ownerIds.includes(cur.user!.id));
       if (!myPets.length) return;
       const due = computeDue(cur.db.acts, cur.db.logs, Date.now())
-        .filter((d) => myPets.some((p) => p.id === d.act.petId) && d.overdueMin !== null && d.overdueMin > 0);
+        .filter((d) => myPets.some((p) => p.id === d.act.petId) && d.status === "overdue");
       if (!due.length) return;
       const top = due[0];
       const msg = `Пора: «${top.act.title}» — просрочено на ${Math.round(top.overdueMin!)} мин`;
       if (notifOn && typeof Notification !== "undefined" && Notification.permission === "granted") {
-        try { new Notification("Лапометр", { body: msg }); } catch { /* noop */ }
+        // одно уведомление на один срок (actId@dueAt): не спамим при тике каждые 30 с
+        const nkey = `${top.act.id}@${top.dueAt}`;
+        if (!notifSentRef.current.has(nkey)) {
+          notifSentRef.current.add(nkey);
+          try { new Notification("Лапометр", { body: msg }); } catch { /* noop */ }
+        }
       }
       if (tg.enabled && tg.remindDue && tg.botToken && tg.chatId) {
         const key = `due:${top.act.id}:${startOfDay(Date.now())}:${Math.floor(Date.now() / HOUR)}`;
@@ -797,7 +803,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         });
       }
     };
-    const t = setInterval(check, 5 * 60_000);
+    const t = setInterval(check, 30_000); // фоновый тик 30 c (см. architecture.md 4.3)
     check();
     return () => clearInterval(t);
   }, [notifOn, tg.enabled, tg.remindDue]);

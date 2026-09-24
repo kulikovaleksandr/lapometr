@@ -26,7 +26,8 @@ export function HomeScreen({ onNav }: { onNav: (t: Tab) => void }) {
   const total = useMemo(() => pawsOf(acts, logs), [acts, logs]);
   const lvl = levelFor(total);
   const due = useMemo(() => computeDue(acts, logs, now), [acts, logs, now]);
-  const overdue = due.filter((d) => d.overdueMin === null || d.overdueMin > 0);
+  const overdue = due.filter((d) => d.status === "overdue" || d.status === "never");
+  const soon = due.filter((d) => d.status === "soon");
   const streak = useMemo(() => streakDays(logs, now), [logs, now]);
   const recent = useMemo(() => [...logs].sort((a, b) => b.at - a.at).slice(0, 4), [logs]);
 
@@ -35,7 +36,9 @@ export function HomeScreen({ onNav }: { onNav: (t: Tab) => void }) {
   const hello = hour < 5 ? "Доброй ночи" : hour < 12 ? "Доброе утро" : hour < 18 ? "Добрый день" : "Добрый вечер";
 
   const mood = overdue.length === 0
-    ? { icon: "heart" as const, text: `${pet.name} сыт и доволен`, cls: "text-ok" }
+    ? soon.length > 0
+      ? { icon: "clock" as const, text: `${pet.name} уже предчувствует еду`, cls: "text-warn" }
+      : { icon: "heart" as const, text: `${pet.name} сыт и доволен`, cls: "text-ok" }
     : overdue.length <= 2
       ? { icon: "clock" as const, text: `${pet.name} ждёт внимания`, cls: "text-warn" }
       : { icon: "alert" as const, text: `${pet.name} совсем заждался`, cls: "text-danger" };
@@ -191,7 +194,7 @@ export function HomeScreen({ onNav }: { onNav: (t: Tab) => void }) {
             ) : (
               <ul className="space-y-2">
                 {due.slice(0, 6).map((d) => {
-                  const isOver = d.overdueMin === null || d.overdueMin > 0;
+                  const isOver = d.status === "overdue" || d.status === "never";
                   return (
                     <li key={d.act.id} className="group flex items-center gap-3 rounded-xl border border-line/70 bg-bg2/50 px-3 py-2.5 transition-all hover:border-line hover:bg-raise">
                       <span className="relative inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full" style={{ background: `color-mix(in oklab, ${d.act.color} 22%, transparent)`, color: d.act.color }}>
@@ -200,12 +203,14 @@ export function HomeScreen({ onNav }: { onNav: (t: Tab) => void }) {
                       </span>
                       <span className="min-w-0 flex-1">
                         <span className="block truncate text-[13.5px] font-bold">{d.act.title}</span>
-                        <span className={cx("block text-[12px] font-medium", d.overdueMin === null ? "text-warn" : d.overdueMin > 0 ? "text-danger" : "text-mute")}>
-                          {d.overdueMin === null
+                        <span className={cx("block text-[12px] font-medium", d.status === "never" ? "text-warn" : d.status === "overdue" ? "text-danger" : d.status === "soon" ? "text-warn" : "text-mute")}>
+                          {d.status === "never"
                             ? "ещё ни разу не выполнялось"
-                            : d.overdueMin > 0
-                              ? `просрочено на ${durText(d.overdueMin)}`
-                              : `через ${durText(-d.overdueMin)}`}
+                            : d.status === "overdue"
+                              ? `просрочено на ${durText(d.overdueMin!)}`
+                              : d.status === "soon"
+                                ? `скоро — через ${durText(-d.overdueMin!)}`
+                                : `через ${durText(-d.overdueMin!)}`}
                         </span>
                       </span>
                       <Btn size="sm" variant={isOver ? "primary" : "soft"} onClick={() => setSel(d.act)}>
@@ -233,7 +238,7 @@ export function HomeScreen({ onNav }: { onNav: (t: Tab) => void }) {
           <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 xl:grid-cols-4">
             {acts.map((a, i) => {
               const st = limitsFor(a, logs, now);
-              const isOver = due.find((d) => d.act.id === a.id && (d.overdueMin === null || d.overdueMin > 0));
+              const isOver = due.find((d) => d.act.id === a.id && (d.status === "overdue" || d.status === "never"));
               return (
                 <button
                   key={a.id}

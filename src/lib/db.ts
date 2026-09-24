@@ -233,22 +233,33 @@ export const lastLog = (logs: LogEntry[], actId: string) => {
   return r;
 };
 
+export type DueStatus = "never" | "overdue" | "soon" | "ok";
+/** Порог «скоро»: срок наступит в пределах этого количества минут. */
+export const DUE_SOON_MIN = 60;
+
 export interface DueItem {
   act: ActivityDef;
   last: LogEntry | undefined;
   dueAt: number | null;
   overdueMin: number | null; // null = ещё ни разу не выполнялось
+  status: DueStatus; // просрочено / скоро / в норме / никогда
 }
 export function computeDue(acts: ActivityDef[], logs: LogEntry[], now: number): DueItem[] {
   return acts
     .filter((a) => a.remindH > 0)
-    .map((a) => {
+    .map((a): DueItem => {
       const l = lastLog(logs, a.id);
-      if (!l) return { act: a, last: undefined, dueAt: null, overdueMin: null };
+      if (!l) return { act: a, last: undefined, dueAt: null, overdueMin: null, status: "never" };
       const dueAt = l.at + a.remindH * HOUR;
-      return { act: a, last: l, dueAt, overdueMin: (now - dueAt) / MIN };
+      const overdueMin = (now - dueAt) / MIN;
+      const status: DueStatus =
+        overdueMin > 0 ? "overdue" : overdueMin >= -DUE_SOON_MIN ? "soon" : "ok";
+      return { act: a, last: l, dueAt, overdueMin, status };
     })
-    .sort((a, b) => (b.overdueMin ?? Number.POSITIVE_INFINITY) - (a.overdueMin ?? Number.POSITIVE_INFINITY));
+    // «никогда» (null) и самые просроченные — в начале списка
+    .sort((a, b) => (a.overdueMin ?? Number.NEGATIVE_INFINITY) === (b.overdueMin ?? Number.NEGATIVE_INFINITY)
+      ? 0
+      : (b.overdueMin ?? Number.NEGATIVE_INFINITY) - (a.overdueMin ?? Number.NEGATIVE_INFINITY));
 }
 
 export const pawsOf = (acts: ActivityDef[], logs: LogEntry[]) => {

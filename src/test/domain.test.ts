@@ -184,6 +184,35 @@ describe("Доменная логика", () => {
       expect(result[0].overdueMin).toBeLessThanOrEqual(0);
       expect(result[0].overdueMin).toBeGreaterThan(-60 * 1.5);
     });
+
+    it("статусы: overdue / soon / ok / never", () => {
+      const now = Date.now();
+      const mkAct = (id: string, remindH: number): ActivityDef => ({
+        id, petId: "pet1", title: id, icon: "feed", color: "#fff",
+        paws: 1, limitDay: 0, limitWeek: 0, limitMonth: 0, remindH,
+      });
+      const acts: ActivityDef[] = [
+        mkAct("a-overdue", 8),  // просрочено
+        mkAct("a-soon", 8),     // наступит в пределах часа
+        mkAct("a-ok", 24),      // далеко до срока
+        mkAct("a-never", 12),   // ни разу не выполнялось
+      ];
+      const logs: LogEntry[] = [
+        { id: "1", petId: "pet1", actId: "a-overdue", ownerId: "user1", at: now - 10 * 3600000 },
+        { id: "2", petId: "pet1", actId: "a-soon", ownerId: "user1", at: now - 7.5 * 3600000 },
+        { id: "3", petId: "pet1", actId: "a-ok", ownerId: "user1", at: now - 2 * 3600000 },
+      ];
+
+      const result = computeDue(acts, logs, now);
+      const byId = Object.fromEntries(result.map((d) => [d.act.id, d.status]));
+
+      expect(byId["a-overdue"]).toBe("overdue");
+      expect(byId["a-soon"]).toBe("soon");
+      expect(byId["a-ok"]).toBe("ok");
+      expect(byId["a-never"]).toBe("never");
+      // «никогда» и самое просроченное — в начале списка
+      expect(result[0].status).toBe("overdue");
+    });
   });
 
   describe("nextOccurrence", () => {
