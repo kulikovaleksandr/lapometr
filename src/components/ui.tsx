@@ -2,7 +2,8 @@ import {
   ButtonHTMLAttributes, CSSProperties, ReactNode, useEffect, useMemo, useRef, useState,
 } from "react";
 import { Icon } from "./icons";
-import type { IconName, User } from "../lib/types";
+import { THEMES, type IconName, type User } from "../lib/types";
+import { useApp } from "../state/AppContext";
 
 export const cx = (...c: (string | false | undefined | null)[]) => c.filter(Boolean).join(" ");
 
@@ -263,6 +264,81 @@ export function Reveal({ children, delay = 0, className = "" }:
   return (
     <div ref={ref} className={cx("reveal", className)} style={{ transitionDelay: `${delay}ms` }}>
       {children}
+    </div>
+  );
+}
+
+/* ---------- Переключатель тем в шапке (Фаза 8.1) ---------- */
+export function ThemeSwitcher({ className = "" }: { className?: string }) {
+  const { theme, setTheme } = useApp();
+  const [open, setOpen] = useState(false);
+  const boxRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const h = (e: MouseEvent) => {
+      if (boxRef.current && !boxRef.current.contains(e.target as Node)) setOpen(false);
+    };
+    const k = (e: KeyboardEvent) => { if (e.key === "Escape") setOpen(false); };
+    document.addEventListener("mousedown", h);
+    document.addEventListener("keydown", k);
+    return () => {
+      document.removeEventListener("mousedown", h);
+      document.removeEventListener("keydown", k);
+    };
+  }, [open]);
+
+  const cur = THEMES.find((t) => t.id === theme) ?? THEMES[0];
+
+  return (
+    <div ref={boxRef} className={cx("relative", className)}>
+      <button
+        onClick={() => setOpen((v) => !v)}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        aria-label={`Тема: ${cur.name}. Выбрать тему`}
+        title={`Тема: ${cur.name}`}
+        className={cx(
+          "inline-flex items-center gap-1.5 rounded-full border border-line bg-surface px-3 py-1.5 text-[12px] font-bold text-mute transition-all",
+          "hover:border-accent hover:text-ink active:scale-[0.96]", open && "border-accent text-ink",
+        )}
+      >
+        <span
+          className="h-3.5 w-3.5 shrink-0 rounded-full border border-black/15"
+          style={{ background: cur.bg, boxShadow: `inset 0 0 0 1.5px ${cur.swatch}` }}
+        />
+        <Icon name={theme === "night" ? "moon" : "sun"} size={13} />
+      </button>
+
+      {open && (
+        <div
+          role="listbox"
+          aria-label="Темы оформления"
+          className="anim-pop absolute right-0 z-50 mt-2 w-48 rounded-xl border border-line bg-surface p-1.5 shadow-xl"
+        >
+          {THEMES.map((t) => (
+            <button
+              key={t.id}
+              role="option"
+              aria-selected={theme === t.id}
+              onClick={() => { setTheme(t.id); setOpen(false); toast(`Тема «${t.name}» применена`, "ok"); }}
+              className={cx(
+                "flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-[13px] font-semibold transition-colors",
+                theme === t.id ? "bg-accent-soft text-ink" : "text-mute hover:bg-raise hover:text-ink",
+              )}
+            >
+              <span
+                className="relative inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-black/10"
+                style={{ background: t.bg }}
+              >
+                <span className="h-2.5 w-2.5 rounded-full" style={{ background: t.swatch }} />
+              </span>
+              <span className="flex-1">{t.name}</span>
+              {theme === t.id && <Icon name="check" size={14} className="text-accent" />}
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

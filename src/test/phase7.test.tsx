@@ -50,15 +50,18 @@ interface SeedOpts {
  */
 let captured: ReturnType<typeof useApp> | null = null;
 function Capture() {
-  captured = useApp();
+  const ctx = useApp();
+  captured = ctx;
+  // всегда возвращаем актуальный контекст (после ре-рендеров от guest/createPet)
+  result.current = ctx;
   return null;
 }
+
+const result: { current: any } = { current: null };
 
 function seed(opts: SeedOpts) {
   vi.spyOn(ui, "toast").mockImplementation(() => undefined);
   render(createElement(Capture), { wrapper });
-  const result = { current: null as any };
-  act(() => { result.current = captured!; });
   act(() => result.current.guest());
   act(() => result.current.createPet({ name: "Барсик", species: "cat", breed: "", birthday: "", color: "#ccc" }));
   const meId = result.current.user!.id;
@@ -78,8 +81,8 @@ function seed(opts: SeedOpts) {
   act(() => result.current.replaceDb({
     ...cur,
     users: [...cur.users, ...(opts.extraUsers ?? [])],
-    pets: cur.pets.map((p) => (p.id === petId ? { ...p, ownerIds: [...p.ownerIds, ...(opts.extraUsers ?? []).map((u) => u.id)] } : p)),
-    acts: [...cur.acts.filter((a) => a.petId !== petId), ...acts],
+    pets: cur.pets.map((p: Pet) => (p.id === petId ? { ...p, ownerIds: [...p.ownerIds, ...(opts.extraUsers ?? []).map((u) => u.id)] } : p)),
+    acts: [...cur.acts.filter((a: ActivityDef) => a.petId !== petId), ...acts],
     logs,
   }));
   return result;
@@ -92,7 +95,7 @@ describe("Фаза 7 — Статистика", () => {
 
   it("7.1: переключатель периодов 7/30/90 дней", () => {
     const base = Date.now();
-    seedDb({ acts: [{ title: "Покормить", paws: 5 }], logs: [0, 1, 2, 5].map((d) => ({ act: 0, at: base - d * DAY })) });
+    seed({ acts: [{ title: "Покормить", paws: 5 }], logs: [0, 1, 2, 5].map((d) => ({ act: 0, at: base - d * DAY })) });
     renderStats();
 
     for (const label of ["7 дней", "30 дней", "90 дней"]) {
@@ -110,7 +113,7 @@ describe("Фаза 7 — Статистика", () => {
 
   it("7.1: карточки-сводки — всего, лапки, среднее/день, серии", () => {
     const base = Date.now();
-    seedDb({ acts: [{ title: "Покормить", paws: 5 }], logs: [0, 1, 2, 5].map((d) => ({ act: 0, at: base - d * DAY })) });
+    seed({ acts: [{ title: "Покормить", paws: 5 }], logs: [0, 1, 2, 5].map((d) => ({ act: 0, at: base - d * DAY })) });
     renderStats();
 
     for (const label of ["Активностей", "Лапок начислено", "Среднее в день", "Текущая серия", "Лучшая серия"]) {
@@ -130,7 +133,7 @@ describe("Фаза 7 — Статистика", () => {
 
   it("7.2: «Лапки по дням» — 30 столбиков, разбивка по хозяевам легендой", () => {
     const base = Date.now();
-    seedDb({
+    seed({
       acts: [{ title: "Покормить", paws: 5 }],
       logs: [
         { act: 0, at: base }, { act: 0, at: base - 1000 },          // сегодня: 2×5=10 лапок
@@ -142,7 +145,8 @@ describe("Фаза 7 — Статистика", () => {
 
     // легенда хозяев внутри секции графика
     const section = screen.getByText("Лапки по дням").closest("section") as HTMLElement;
-    expect(within(section).getByText("Гость")).toBeInTheDocument();
+    // гость называется «Гость 1» (makeGuest нумерует гостей) — ищем префиксом
+    expect(within(section).getByText(/^Гость/)).toBeInTheDocument();
 
     // 30 дней периода → 30 столбцов графика (каждый с title-подсказкой «N лапок»)
     const bars = container.querySelectorAll('div.group[title*="лапок"]');
@@ -155,7 +159,7 @@ describe("Фаза 7 — Статистика", () => {
 
   it("7.3: разрез по активностям (×счет · лапки) и гистограмма по часам", () => {
     const base = Date.now();
-    seedDb({
+    seed({
       acts: [{ title: "Покормить", paws: 5 }, { title: "Поиграть", paws: 3 }],
       logs: [
         { act: 0, at: base }, { act: 0, at: base - 3600e3 }, { act: 1, at: base - 7200e3 },
@@ -163,8 +167,10 @@ describe("Фаза 7 — Статистика", () => {
     });
     renderStats();
 
-    const feedRow = screen.getByText("Покормить").closest("li") as HTMLElement;
-    const playRow = screen.getByText("Поиграть").closest("li") as HTMLElement;
+    // «Покормить» встречается и в разрезе по активностям (<li>), и в таблице регулярности (<td>).
+    // Ищем именно строку разреза — closest("li") от нужного элемента.
+    const feedRow = screen.getAllByText("Покормить").map((e) => e.closest("li")).find(Boolean) as HTMLElement;
+    const playRow = screen.getAllByText("Поиграть").map((e) => e.closest("li")).find(Boolean) as HTMLElement;
     expect(within(feedRow).getByText(/×2/)).toBeInTheDocument();       // Покормить ×2
     expect(within(feedRow).getByText(/10 лапок/)).toBeInTheDocument(); // 2×5
     expect(within(playRow).getByText(/×1/)).toBeInTheDocument();       // Поиграть ×1
@@ -178,7 +184,7 @@ describe("Фаза 7 — Статистика", () => {
 
   it("7.4: доли лапок по хозяевам и таблица регулярности", () => {
     const base = Date.now();
-    seedDb({
+    seed({
       acts: [{ title: "Покормить", paws: 5 }],
       extraUsers: [{ id: "u2", name: "Алина", color: "#0a0" }],
       logs: [
@@ -201,7 +207,7 @@ describe("Фаза 7 — Статистика", () => {
     tableSection.getByText("Последний раз");
     tableSection.getByText("Всего");
     tableSection.getByText("По хозяевам");
-    const row = screen.getByText("Покормить").closest("tr") as HTMLElement;
+    const row = tableSection.getAllByText("Покормить")[0].closest("tr") as HTMLElement;
     expect(within(row).getByText("×3")).toBeInTheDocument(); // всего по «Покормить»
     // разбивка по хозяевам: 2 у гостя, 1 у Алины
     expect(within(row).getAllByText("2").length).toBeGreaterThan(0);
