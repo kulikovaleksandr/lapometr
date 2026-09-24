@@ -188,7 +188,7 @@ export function SettingsScreen({ onCopy }: { onCopy: (code: string) => void }) {
                           <Icon name="user" size={14} />
                           {role === "owner" ? "→ Помощник" : "→ Владелец"}
                         </Btn>
-                        <Btn variant="danger" size="sm" onClick={() => removeOwner(o.id)}><Icon name="x" size={14} />убрать</Btn>
+                        <Btn variant="danger" size="sm" onClick={() => { const err = removeOwner(o.id); if (err) toast(err, "err"); }}><Icon name="x" size={14} />убрать</Btn>
                       </div>
                     )}
                   </li>
