@@ -193,10 +193,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  /* ---- тема: data-theme на <html> ---- */
+  /* ---- тема: data-theme на <html>, сохранение выбора (Фаза 8.1) ---- */
+  const firstTheme = useRef(true);
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
     saveTheme(theme);
+    // плавный crossfade при переключении (не на первом рендере)
+    if (firstTheme.current) { firstTheme.current = false; return; }
+    const el = document.documentElement;
+    el.classList.add("theme-anim");
+    const t = setTimeout(() => el.classList.remove("theme-anim"), 350);
+    return () => clearTimeout(t);
   }, [theme]);
 
   useEffect(() => { saveNotif(notifOn); }, [notifOn]);

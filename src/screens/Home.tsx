@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useApp } from "../state/AppContext";
-import { Bar, Btn, Burst, CountUp, Modal, Reveal, Ring, UserAvatar, cx } from "../components/ui";
+import { Bar, Btn, Burst, CountUp, EmptyState, Modal, Reveal, Ring, UserAvatar, cx } from "../components/ui";
 import { Icon, PetFace } from "../components/icons";
 import {
   agoText, ageText, computeDue, durText, fileToPhoto, fmtTime, limitsFor, pawsOf, plural, streakDays,
@@ -303,7 +303,12 @@ export function HomeScreen({ onNav }: { onNav: (t: Tab) => void }) {
               <Btn variant="ghost" size="sm" onClick={() => onNav("journal")}>весь журнал <Icon name="chev" size={14} /></Btn>
             </div>
             {recent.length === 0 ? (
-              <p className="text-[13px] text-mute">Журнал пока пуст — отметьте первую активность выше.</p>
+              <EmptyState
+                icon="book"
+                title="Журнал пока пуст"
+                text="Отметьте первую активность — записи появятся здесь."
+                action={<Btn variant="outline" size="sm" onClick={() => onNav("journal")}>открыть журнал</Btn>}
+              />
             ) : (
               <ul className="space-y-2.5">
                 {recent.map((l) => {

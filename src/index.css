@@ -46,6 +46,82 @@ body {
   --raise: #404040;
 }
 
+/* Фаза 8.1 — остальные темы из THEMES (lib/types.ts). Значения согласованы с превью swatch/bg */
+[data-theme="day"] {
+  --bg: #faf8f3;
+  --bg2: #f2efe7;
+  --surface: #ffffff;
+  --surface2: #f7f4ec;
+  --line: #e6e1d3;
+  --text: #26221a;
+  --muted: #8a8371;
+  --accent: #f59e0b;
+  --accent-soft: rgba(245, 158, 11, 0.12);
+  --accent-ink: #ffffff;
+  --ok: #10b981;
+  --warn: #d97706;
+  --danger: #dc2626;
+  --info: #2563eb;
+  --raise: #efeadd;
+}
+
+[data-theme="latte"] {
+  --bg: #f5ebe0;
+  --bg2: #ede0d1;
+  --surface: #fbf4ea;
+  --surface2: #f1e5d6;
+  --line: #ddcbb6;
+  --text: #3e2f23;
+  --muted: #8d6e63;
+  --accent: #8d6e63;
+  --accent-soft: rgba(141, 110, 99, 0.14);
+  --accent-ink: #fdf6ee;
+  --ok: #2e7d32;
+  --warn: #ef6c00;
+  --danger: #c62828;
+  --info: #1565c0;
+  --raise: #e8dac7;
+}
+
+[data-theme="forest"] {
+  --bg: #e8f0e3;
+  --bg2: #dbe7d3;
+  --surface: #f4f9ef;
+  --surface2: #eaf2e3;
+  --line: #c3d6b7;
+  --text: #1e3123;
+  --muted: #5d7c63;
+  --accent: #2e7d32;
+  --accent-soft: rgba(46, 125, 50, 0.13);
+  --accent-ink: #f2faf0;
+  --ok: #2e7d32;
+  --warn: #ef6c00;
+  --danger: #c62828;
+  --info: #1565c0;
+  --raise: #d7e6cd;
+}
+
+[data-theme="olive"] {
+  --bg: #f0f0e3;
+  --bg2: #e6e6d3;
+  --surface: #f8f8ee;
+  --surface2: #eeeedc;
+  --line: #d3d3b4;
+  --text: #2c3118;
+  --muted: #6f7440;
+  --accent: #6b8e23;
+  --accent-soft: rgba(107, 142, 35, 0.14);
+  --accent-ink: #f7fbea;
+  --ok: #558b2f;
+  --warn: #ef6c00;
+  --danger: #c62828;
+  --info: #1565c0;
+  --raise: #e2e2c8;
+}
+
+/* Плавная смена темы (Фаза 8.1) */
+html.theme-anim, html.theme-anim body { transition: background-color 0.3s ease, color 0.3s ease; }
+
 /* Утилитарные классы */
 .bg-bg { background-color: var(--bg); }
 .bg-bg2 { background-color: var(--bg2); }

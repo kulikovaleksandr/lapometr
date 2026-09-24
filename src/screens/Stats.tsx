@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useApp } from "../state/AppContext";
-import { CountUp, Reveal, Seg, UserAvatar, cx } from "../components/ui";
+import { CountUp, EmptyState, Reveal, Seg, UserAvatar, cx } from "../components/ui";
 import { Icon } from "../components/icons";
 import {
   DAY, agoText, bestStreak, fmtNum, pawsOf, plural, startOfDay, streakDays,
@@ -202,7 +202,7 @@ export function StatsScreen() {
           <section className="card p-6">
             <h3 className="mb-4 font-display text-[16px] font-bold">Разрез по активностям</h3>
             {byAct.length === 0 ? (
-              <p className="text-[13px] text-mute">Нет данных за период.</p>
+              <EmptyState icon="chart" title="Нет данных за период" text="Отметьте несколько активностей — здесь появится разрез по заботам." />
             ) : (
               <ul className="space-y-3">
                 {byAct.map((x) => {
@@ -259,7 +259,7 @@ export function StatsScreen() {
           <h3 className="mb-1 font-display text-[16px] font-bold">Регулярность по каждому хозяину</h3>
           <p className="mb-4 text-[12.5px] text-mute">Кто и как часто выполняет каждую заботу за выбранный период</p>
           {regularity.length === 0 ? (
-            <p className="text-[13px] text-mute">Нет данных.</p>
+            <EmptyState icon="users" title="Нет данных" text="За выбранный период этот раздел ещё пуст." />
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full min-w-[640px] text-left">
