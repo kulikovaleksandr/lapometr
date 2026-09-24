@@ -89,7 +89,7 @@ export interface AppCtx {
   setActivePet: (id: string) => void;
   regenInvite: () => void;
   joinPet: (code: string) => Promise<string | null>;
-  removeOwner: (ownerId: string) => void;
+  removeOwner: (ownerId: string) => string | null;
   getUserRole: (userId: string) => Role;
   setUserRole: (userId: string, role: Role) => void;
   canEditActivities: () => boolean;
@@ -172,15 +172,25 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const user = db.users.find((u) => u.id === uidCur) ?? null;
   ref.current = { db, user };
 
-  /* ---- сохранение БД + синхронизация между вкладками ---- */
-  useEffect(() => { saveDB(db); }, [db]);
+  /* ---- сохранение БД + синхронизация между вкладками/экземплярами провайдера ---- */
+  const firstRender = useRef(true);
+  useEffect(() => {
+    // на первом рендере НЕ сохраняем: иначе экземпляр с устаревшим снимком БД
+    // затрёт изменения, сделанные другим экземпляром провайдера
+    if (firstRender.current) { firstRender.current = false; return; }
+    saveDB(db);
+  }, [db]);
   useEffect(() => {
     const h = () => {
       const fresh = loadDB();
-      if (fresh) setDb(fresh);
+      if (fresh) setDb((cur) => (JSON.stringify(cur) === JSON.stringify(fresh) ? cur : fresh));
     };
     window.addEventListener("storage", h);
-    return () => window.removeEventListener("storage", h);
+    window.addEventListener("lapometr:db", h);
+    return () => {
+      window.removeEventListener("storage", h);
+      window.removeEventListener("lapometr:db", h);
+    };
   }, []);
 
   /* ---- тема: data-theme на <html> ---- */
@@ -390,13 +400,30 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return "Питомец с таким кодом не найден";
   };
 
+  /** Фаза 5.4: удаление хозяина с защитой от «пустого владельца».
+   *  Нельзя убрать последнего хозяина и нельзя оставить питомца без «Владельца»
+   *  (если убираемый — единственный владелец, право переходит к следующему по списку). */
   const removeOwner = (ownerId: string) => {
-    if (!pet) return;
+    if (!pet) return "Питомец не выбран";
+    if (!pet.ownerIds.includes(ownerId)) return "Этот пользователь не является хозяином питомца";
+    if (pet.ownerIds.length <= 1) return "Нельзя убрать последнего хозяина — у питомца должен остаться хотя бы один владелец";
+    const remaining = pet.ownerIds.filter((x) => x !== ownerId);
+    const roleOf = (id: string): Role => pet.ownerRoles?.[id] ?? (pet.ownerIds[0] === id ? "owner" : "helper");
     setDb((d) => ({
       ...d,
-      pets: d.pets.map((p) => (p.id === pet.id ? { ...p, ownerIds: p.ownerIds.filter((x) => x !== ownerId) } : p)),
+      pets: d.pets.map((p) => {
+        if (p.id !== pet.id) return p;
+        const roles = { ...(p.ownerRoles ?? {}) };
+        delete roles[ownerId];
+        // защита: если после удаления у питомца не осталось «Владельцев», повышаем первого оставшегося
+        if (!remaining.some((id) => roleOf(id) === "owner" && id !== ownerId)) {
+          roles[remaining[0]] = "owner";
+        }
+        return { ...p, ownerIds: remaining, ownerRoles: roles };
+      }),
     }));
     toast("Хозяин убран из питомца", "ok");
+    return null;
   };
 
   const getUserRole = (userId: string): Role =>
